@@ -1,0 +1,60 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editors/IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Logs and coverage
+*.log
+logs/
+.coverage*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Environment and secrets
+.env
+.env.*
+.envrc
+config.env
+config.local.py
+
+# Chroma / Vector DB / SQLite
+*.db
+*.sqlite3
+# Keep directory but ignore contents
+data/chroma/**
+!data/chroma/.gitkeep
+# If remote has chroma_db folder, ignore it too
+chroma_db/**
+!chroma_db/.gitkeep
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Cache
+.cache/
+
+# OS-specific
+ehthumbs.db
+Icon?
