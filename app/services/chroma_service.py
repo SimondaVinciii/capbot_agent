@@ -355,6 +355,47 @@ class ChromaService:
         """Upsert multiple topics into the collection."""
         if not topics:
             return 0
+
+    def list_items(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        include_documents: bool = False,
+        include_embeddings: bool = False,
+        ids: Optional[List[str]] = None,
+        where: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """List items from the collection with optional pagination and includes.
+        
+        Args:
+            limit: Max number of items to return
+            offset: Number of items to skip
+            include_documents: Whether to include full documents
+            include_embeddings: Whether to include embeddings (heavy)
+            ids: Optional explicit list of ids to fetch
+            where: Optional metadata filter
+        
+        Returns:
+            Dict with ids, metadatas, and optionally documents/embeddings
+        """
+        try:
+            includes: List[str] = ["metadatas"]
+            if include_documents:
+                includes.append("documents")
+            if include_embeddings:
+                includes.append("embeddings")
+
+            results = self.collection.get(
+                ids=ids,
+                where=where,
+                limit=limit,
+                offset=offset,
+                include=includes
+            )
+            return results
+        except Exception as e:
+            self.logger.error(f"Error listing collection items: {e}")
+            return {"ids": [], "metadatas": [], "documents": [], "embeddings": []}
         try:
             ids: List[str] = []
             documents: List[str] = []

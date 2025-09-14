@@ -57,6 +57,65 @@ def reset_collection():
     return {"message": "Collection reset successfully"}
 
 
+@router.get(
+    "/collection",
+    summary="📚 View Chroma collection contents",
+    description="List items in the Chroma collection with pagination and optional previews.",
+)
+def list_collection(
+    limit: int = Query(20, ge=1, le=200, description="Max items to return"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
+    include_documents: bool = Query(False, description="Include document text"),
+    include_embeddings: bool = Query(False, description="Include embeddings (large)"),
+    topic_id: Optional[str] = Query(None, description="Filter by exact topic id"),
+    supervisor_id: Optional[int] = Query(None, description="Filter by supervisor_id in metadata"),
+    semester_id: Optional[int] = Query(None, description="Filter by semester_id in metadata"),
+):
+    try:
+        where: Dict[str, Any] = {}
+        if supervisor_id is not None:
+            where["supervisor_id"] = supervisor_id
+        if semester_id is not None:
+            where["semester_id"] = semester_id
+
+        ids = [topic_id] if topic_id else None
+        results = chroma.list_items(
+            limit=limit,
+            offset=offset,
+            include_documents=include_documents,
+            include_embeddings=include_embeddings,
+            ids=ids,
+            where=(where or None)
+        )
+
+        # Normalize response
+        items = []
+        ids_list = results.get("ids") or []
+        docs_list = results.get("documents") or []
+        metas_list = results.get("metadatas") or []
+
+        for i, item_id in enumerate(ids_list):
+            meta = metas_list[i] if i < len(metas_list) else {}
+            doc = docs_list[i] if (include_documents and i < len(docs_list)) else None
+            preview = None
+            if include_documents and isinstance(doc, str):
+                preview = (doc[:300] + ("..." if len(doc) > 300 else ""))
+            items.append({
+                "id": item_id,
+                "metadata": meta,
+                "document_preview": preview
+            })
+
+        return {
+            "count": len(items),
+            "offset": offset,
+            "limit": limit,
+            "items": items
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Failed to list collection: {e}")
+
+
 
 
 
@@ -157,6 +216,20 @@ async def index_approved_topics_from_db(
                             "description": latest_version.Description,
                             "objectives": latest_version.Objectives,
                             "methodology": latest_version.Methodology,
+                            # New fields from TopicVersion schema
+                            "vn_title": getattr(latest_version, "VN_title", None),
+                            "context": getattr(latest_version, "Context", None),
+                            "content_section": getattr(latest_version, "Content", None),
+                            "problem": getattr(latest_version, "Problem", None),
+                            "document_url": latest_version.DocumentUrl,
+                            "status": latest_version.Status,
+                            "submitted_at": latest_version.SubmittedAt.isoformat() if latest_version.SubmittedAt else None,
+                            "submitted_by": latest_version.SubmittedBy,
+                            "created_at": latest_version.CreatedAt.isoformat() if latest_version.CreatedAt else None,
+                            "created_by": getattr(latest_version, "CreatedBy", None),
+                            "last_modified_at": latest_version.LastModifiedAt.isoformat() if latest_version.LastModifiedAt else None,
+                            "last_modified_by": getattr(latest_version, "LastModifiedBy", None),
+                            "deleted_at": latest_version.DeletedAt.isoformat() if getattr(latest_version, "DeletedAt", None) else None,
                             "source": "TopicVersion",
                             "embedding_provider": chroma.embedding_provider
                         }
@@ -185,6 +258,17 @@ async def index_approved_topics_from_db(
                                 "description": topic.Description,
                                 "objectives": topic.Objectives,
                                 "methodology": None,
+                                # New fields from Topic schema
+                                "vn_title": getattr(topic, "VN_title", None),
+                                "abbreviation": getattr(topic, "Abbreviation", None),
+                                "context": getattr(topic, "Context", None),
+                                "content_section": getattr(topic, "Content", None),
+                                "problem": getattr(topic, "Problem", None),
+                                "created_at": topic.CreatedAt.isoformat() if getattr(topic, "CreatedAt", None) else None,
+                                "created_by": getattr(topic, "CreatedBy", None),
+                                "last_modified_at": topic.LastModifiedAt.isoformat() if getattr(topic, "LastModifiedAt", None) else None,
+                                "last_modified_by": getattr(topic, "LastModifiedBy", None),
+                                "deleted_at": topic.DeletedAt.isoformat() if getattr(topic, "DeletedAt", None) else None,
                                 "source": "Topic",
                                 "embedding_provider": chroma.embedding_provider
                             }

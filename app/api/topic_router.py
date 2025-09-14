@@ -1,6 +1,6 @@
 """Topic Management API endpoints."""
 
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, UploadFile, File, Form
 from typing import List, Optional, Dict, Any
 from app.schemas.schemas import (
     TopicRequest, TopicResponse, TopicVersionRequest, TopicVersionResponse,
@@ -10,6 +10,8 @@ from app.schemas.schemas import (
 from app.services.topic_service import TopicService
 from app.agents.duplicate_detection_agent import DuplicateDetectionAgent
 from app.agents.topic_modification_agent import TopicModificationAgent
+from app.agents.check_rubric_agent import CheckRubricAgent
+from app.schemas.schemas import RubricEvaluationRequest, RubricEvaluationResponse
 import logging
 
 # Configure logging
@@ -31,6 +33,7 @@ router = APIRouter(
 topic_service = TopicService()
 duplicate_agent = DuplicateDetectionAgent()
 modification_agent = TopicModificationAgent()
+rubric_agent = CheckRubricAgent()
 
 @router.post(
     "/check-duplicate-advanced",
@@ -97,6 +100,186 @@ async def check_duplicate_advanced(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post(
+    "/check-rubric",
+    response_model=RubricEvaluationResponse,
+    summary="📝 Đánh giá đề tài theo rubric 10 tiêu chí",
+    description="Đánh giá đề tài theo các tiêu chí: tiêu đề, ngữ cảnh, vấn đề, người dùng, luồng/chức năng, khách hàng/tài trợ, hướng tiếp cận & công nghệ & deliverables, phạm vi & packages & khả thi 14 tuần, độ phức tạp kỹ thuật, tính ứng dụng & khả thi công nghệ.",
+)
+async def check_rubric(req: RubricEvaluationRequest) -> RubricEvaluationResponse:
+    try:
+        import time
+        t0 = time.time()
+        result = await rubric_agent.process(req.dict())
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Rubric evaluation failed"))
+
+        data = result.get("data", {})
+        # Ensure processing_time exists
+        if "processing_time" not in data:
+            data["processing_time"] = round(time.time() - t0, 3)
+        return RubricEvaluationResponse(**data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in check_rubric: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/check-rubric-file",
+    response_model=RubricEvaluationResponse,
+    summary="📎 Upload .docx để chấm rubric",
+    description="Nhận file .docx, trích xuất văn bản và chấm rubric tự động. Có thể gửi kèm metadata tối thiểu (title, supervisor_id, semester_id).",
+)
+async def check_rubric_file(
+    file: UploadFile = File(..., description="Word .docx file"),
+    title: str = Form("", description="Tiêu đề đề tài (tùy chọn, nếu không có sẽ cố gắng suy luận") ,
+    supervisor_id: int = Form(1, description="Mã GV hướng dẫn (tùy chọn)"),
+    semester_id: int = Form(1, description="Mã học kỳ (tùy chọn)"),
+    category_id: int = Form(0, description="Danh mục (tùy chọn)"),
+    max_students: int = Form(4, description="Số SV tối đa (tùy chọn)")
+) -> RubricEvaluationResponse:
+    try:
+        import time
+        import io
+        try:
+            from docx import Document
+        except Exception:
+            raise HTTPException(status_code=500, detail="Missing dependency: python-docx. Please install and restart the server.")
+        t0 = time.time()
+
+        if not file.filename.lower().endswith(".docx"):
+            raise HTTPException(status_code=400, detail="Only .docx files are supported")
+
+        # Read file into memory and parse with python-docx
+        content = await file.read()
+        try:
+            document = Document(io.BytesIO(content))
+        except Exception as ex:
+            raise HTTPException(status_code=400, detail=f"Failed to parse .docx: {ex}")
+
+        # Extract text with simple paragraph join. Tables are appended linearly.
+        parts: list[str] = []
+        for p in document.paragraphs:
+            txt = (p.text or "").strip()
+            if txt:
+                parts.append(txt)
+        # Tables
+        for tbl in getattr(document, "tables", []) or []:
+            for row in tbl.rows:
+                row_text = [cell.text.strip() for cell in row.cells if cell and cell.text]
+                if any(row_text):
+                    parts.append(" | ".join(row_text))
+
+        extracted_text = "\n".join(parts)
+
+        # Build minimal topic_request. If title is blank, attempt a heuristic from first line.
+        inferred_title = title.strip()
+        if not inferred_title:
+            first_line = extracted_text.splitlines()[0].strip() if extracted_text else ""
+            inferred_title = first_line[:200] if first_line else "Đề tài chưa đặt tên"
+
+        rubric_payload = {
+            "topic_request": {
+                "title": inferred_title,
+                "description": None,
+                "objectives": None,
+                "methodology": None,
+                "expected_outcomes": None,
+                "requirements": None,
+                "supervisor_id": supervisor_id,
+                "semester_id": semester_id,
+                "category_id": (category_id if category_id != 0 else None),
+                "max_students": max_students,
+            },
+            "proposal_text": extracted_text,
+        }
+
+        result = await rubric_agent.process(rubric_payload)
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Rubric evaluation failed"))
+
+        data = result.get("data", {})
+        if "processing_time" not in data:
+            data["processing_time"] = round(time.time() - t0, 3)
+        return RubricEvaluationResponse(**data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in check_rubric_file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+@router.post(
+    "/submit-with-ai",
+    response_model=AgentProcessResponse,
+    summary="🤖 Submit Topic with Full AI Support",
+    description="""
+    ## Submit topic with comprehensive AI agent support
+    
+    ### �� AI Features:
+    - **Duplicate Detection**: Uses ChromaDB to check for similar topics
+    - **Auto-Modification**: Automatically modifies topic if duplicates found
+    - **Trending Suggestions**: Gets AI-powered topic suggestions
+    - **Full Processing**: Complete workflow with all AI agents
+    
+    ### 📊 Processing Workflow:
+    1. **Suggestion Generation** (if enabled): Get trending topic suggestions
+    2. **Duplicate Detection** (if enabled): Check for similar existing topics
+    3. **Auto-Modification** (if duplicates found): Modify topic to reduce similarity
+    4. **Topic Creation**: Create topic in database
+    5. **Indexing**: Index new topic for future duplicate detection
+    
+    ### ⚙️ Parameters:
+    - `check_duplicates`: Enable ChromaDB duplicate detection
+    - `get_suggestions`: Get trending topic suggestions
+    - `auto_modify`: Auto-modify topic if duplicates found
+    
+    ### 📋 Response includes:
+    - Complete processing results
+    - Duplicate analysis and similarity scores
+    - Modification suggestions (if applicable)
+    - Final topic data and database ID
+    - Processing statistics and timing
+    """,
+    responses={
+        200: {
+            "description": "Topic submitted successfully with AI support",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "topic_id": 123,
+                        "duplicate_check": {
+                            "status": "unique",
+                            "similarity_score": 0.15,
+                            "similar_topics": []
+                        },
+                        "suggestions": [],
+                        "modifications": None,
+                        "final_topic": {
+                            "id": 123,
+                            "title": "AI-Powered Learning System",
+                            "description": "An intelligent learning platform...",
+                            "objectives": "Create personalized learning paths...",
+                            "supervisor_id": 1,
+                            "category_id": 2,
+                            "semester_id": 1,
+                            "max_students": 4,
+                            "is_approved": False,
+                            "created_at": "2024-01-22T10:30:00Z"
+                        },
+                        "messages": [
+                            "Đề tài có tính độc đáo tốt, không phát hiện trùng lặp",
+                            "Đã tạo đề tài thành công trong cơ sở dữ liệu",
+                            "Đã lưu trữ đề tài vào hệ thống tìm kiếm"
+                        ],
+                        "processing_time": 2.456
+                    }
+                }
+            }
+        }
+    }
+)
 async def submit_topic_with_ai(
     topic_request: TopicRequest,
     check_duplicates: bool = Query(True, description="Enable duplicate detection using ChromaDB"),
@@ -228,17 +411,23 @@ async def get_trending_suggestions(
     category_preference: str = Query("", description="Preferred topic category (e.g., 'AI', 'Web Development')"),
     keywords: List[str] = Query([], description="Keywords of interest for customization"),
     supervisor_expertise: List[str] = Query([], description="Supervisor's expertise areas"),
-    student_level: str = Query("undergraduate", description="Student level: undergraduate or graduate")
+    student_level: str = Query("undergraduate", description="Student level: undergraduate or graduate"),
+    team_size: int = Query(4, description="Team size (only 4 or 5 supported)")
 ) -> TopicSuggestionsResponse:
     try:
         logger.info(f"Getting trending suggestions for semester: {semester_id}")
+        
+        # Enforce only 4 or 5
+        if team_size not in (4, 5):
+            team_size = 4
         
         result = await topic_service.get_trending_suggestions(
             semester_id=semester_id,
             category_preference=category_preference,
             keywords=keywords,
             supervisor_expertise=supervisor_expertise,
-            student_level=student_level
+            student_level=student_level,
+            team_size=team_size
         )
         
         if result.get("success"):

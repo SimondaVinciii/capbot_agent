@@ -5,9 +5,11 @@ from sqlalchemy.orm import Session
 from app.models.database import get_db
 from app.repositories.topic_repository import TopicRepository
 from app.agents.main_agent import MainAgent
+from app.agents.check_rubric_agent import CheckRubricAgent
 from app.schemas.schemas import (
     TopicRequest, TopicResponse, TopicVersionRequest, TopicVersionResponse,
-    AgentProcessRequest, DuplicateCheckResult, TopicSuggestionsResponse
+    AgentProcessRequest, DuplicateCheckResult, TopicSuggestionsResponse,
+    RubricEvaluationRequest
 )
 import logging
 
@@ -17,6 +19,7 @@ class TopicService:
     def __init__(self):
         self.logger = logging.getLogger("topic_service")
         self.main_agent = MainAgent()
+        self.rubric_agent = CheckRubricAgent()
     
     async def submit_topic_with_ai_support(
         self,
@@ -99,7 +102,8 @@ class TopicService:
         category_preference: str = "",
         keywords: List[str] = None,
         supervisor_expertise: List[str] = None,
-        student_level: str = "undergraduate"
+        student_level: str = "undergraduate",
+        team_size: int = 4
     ) -> Dict[str, Any]:
         """Get trending topic suggestions.
         
@@ -121,7 +125,8 @@ class TopicService:
                 "category_preference": category_preference,
                 "keywords": keywords or [],
                 "supervisor_expertise": supervisor_expertise or [],
-                "student_level": student_level
+                "student_level": student_level,
+                "team_size": team_size
             }
             
             result = await self.main_agent.process_suggestion_only(suggestion_data)
@@ -173,6 +178,16 @@ class TopicService:
                 "success": False,
                 "error": str(e)
             }
+
+    async def evaluate_topic_rubric(self, req: RubricEvaluationRequest) -> Dict[str, Any]:
+        """Evaluate a topic proposal using the rubric agent."""
+        try:
+            self.logger.info("Evaluating topic rubric")
+            result = await self.rubric_agent.process(req.dict())
+            return result
+        except Exception as e:
+            self.logger.error(f"Error in evaluate_topic_rubric: {e}")
+            return {"success": False, "error": str(e)}
     
     def create_topic_simple(self, topic_request: TopicRequest) -> Dict[str, Any]:
         """Create topic without AI processing (simple creation).
@@ -692,7 +707,22 @@ class TopicService:
                         "category_id": topic.CategoryId,
                         "supervisor_id": topic.SupervisorId,
                         "status": version.Status,
-                        "created_at": version.CreatedAt.isoformat() if version.CreatedAt else None
+                        "created_at": version.CreatedAt.isoformat() if version.CreatedAt else None,
+                        # New fields from TopicVersion
+                        "vn_title": getattr(version, "VN_title", None),
+                        "document_url": version.DocumentUrl,
+                        "submitted_at": version.SubmittedAt.isoformat() if version.SubmittedAt else None,
+                        "submitted_by": version.SubmittedBy,
+                        "created_by": version.CreatedBy,
+                        "last_modified_at": version.LastModifiedAt.isoformat() if version.LastModifiedAt else None,
+                        "last_modified_by": version.LastModifiedBy,
+                        "deleted_at": version.DeletedAt.isoformat() if version.DeletedAt else None,
+                        "context": version.Context,
+                        "content_section": version.Content,
+                        "problem": version.Problem,
+                        # Topic-level extras
+                        "abbreviation": getattr(topic, "Abbreviation", None),
+                        "is_approved": getattr(topic, "IsApproved", None)
                     }
                 }
                 

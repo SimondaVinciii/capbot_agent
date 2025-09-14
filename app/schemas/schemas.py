@@ -1,5 +1,7 @@
 """Pydantic schemas for request/response models."""
 
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -71,6 +73,61 @@ class TopicVersionRequest(BaseModel):
         description="Version status: 1=Draft, 2=Submitted, 3=Under Review, 4=Approved, 5=Rejected",
         example=2
     )
+
+
+# ===== Submission gating schemas (submit/resubmit) =====
+
+class SubmissionGateConfig(BaseModel):
+    """Config to decide pass/fail based on rubric results."""
+    min_overall_score: float = Field(70.0, ge=0.0, le=100.0, description="Minimum overall score to pass")
+    min_criterion_scores: Dict[str, float] = Field(
+        default_factory=dict,
+        description="Optional per-criterion minimums keyed by criterion id (0..10 scale)",
+        example={"problem_clarity": 6.0, "approach_fit": 6.5}
+    )
+
+
+class SubmissionSubmitRequest(BaseModel):
+    """Request to gate a submission using rubric evaluation before submit."""
+    rubric_request: RubricEvaluationRequest
+    gate: SubmissionGateConfig = Field(default_factory=SubmissionGateConfig)
+
+
+class BlockingCriterion(BaseModel):
+    id: str
+    question: str
+    score: float
+    required_min: float
+
+
+class SubmissionSubmitResponse(BaseModel):
+    """Decision result for submit attempt based on rubric."""
+    allowed: bool
+    decision_reason: str
+    overall_score: float
+    overall_rating: str
+    blocking_criteria: List[BlockingCriterion] = Field(default_factory=list)
+    rubric: RubricEvaluationResponse
+    suggestions: List[str] = Field(default_factory=list)
+
+
+class SubmissionResubmitRequest(BaseModel):
+    """Request to gate a resubmission using rubric improvement threshold."""
+    rubric_request: RubricEvaluationRequest
+    previous_overall_score: float = Field(..., ge=0.0, le=100.0)
+    improvement_threshold: float = Field(5.0, ge=0.0, le=100.0, description="Minimum points improvement required")
+    gate: SubmissionGateConfig = Field(default_factory=SubmissionGateConfig)
+
+
+class SubmissionResubmitResponse(BaseModel):
+    allowed: bool
+    decision_reason: str
+    overall_score: float
+    overall_rating: str
+    improvement: float
+    blocking_criteria: List[BlockingCriterion] = Field(default_factory=list)
+    rubric: RubricEvaluationResponse
+    suggestions: List[str] = Field(default_factory=list)
 
 
 class TopicRequest(BaseModel):
@@ -265,6 +322,16 @@ class TopicSuggestion(BaseModel):
         default="6 months",
         description="Estimated project duration",
         example="6 months"
+    )
+    team_size: int = Field(
+        default=4,
+        description="Recommended team size (4 or 5)",
+        example=4
+    )
+    suggested_roles: List[str] = Field(
+        default_factory=list,
+        description="Suggested team roles for effective collaboration",
+        example=["Team Lead/PM", "Backend Developer", "Frontend Developer", "AI/ML Engineer"]
     )
 
 
@@ -481,3 +548,50 @@ class ErrorResponse(BaseModel):
     )
 
 
+
+# ===== Rubric evaluation schemas =====
+
+class RubricCriterionEvaluation(BaseModel):
+    """Evaluation detail for a single rubric criterion."""
+    id: str = Field(..., description="Stable identifier for the criterion", example="title_alignment")
+    question: str = Field(..., description="Rubric question in Vietnamese")
+    score: float = Field(..., ge=0.0, le=10.0, description="Score 0-10 for this criterion", example=8.5)
+    weight: float = Field(..., ge=0.0, le=1.0, description="Weight of the criterion in overall score", example=0.1)
+    assessment: str = Field(..., description="Short assessment for this criterion")
+    evidence: str = Field(default="", description="Evidence quoted or inferred from the proposal")
+    recommendations: List[str] = Field(default_factory=list, description="Actionable improvements (short bullets)")
+
+
+class RubricEvaluationResponse(BaseModel):
+    """Aggregated rubric evaluation for a topic proposal."""
+    overall_score: float = Field(..., ge=0.0, le=100.0, description="Weighted total score on 0-100 scale", example=82.0)
+    overall_rating: str = Field(..., description="Rating band derived from overall score", example="Good")
+    summary: str = Field(..., description="One-paragraph summary of the evaluation")
+    criteria: List[RubricCriterionEvaluation] = Field(..., description="Per-criterion results (10 items)")
+    missing_fields: List[str] = Field(default_factory=list, description="Missing or weak sections detected")
+    risks: List[str] = Field(default_factory=list, description="Top risks or uncertainties")
+    next_steps: List[str] = Field(default_factory=list, description="Concrete next steps to improve the proposal")
+    processing_time: float = Field(..., description="Time taken for evaluation in seconds", example=1.234)
+
+
+class RubricEvaluationRequest(BaseModel):
+    """Input for rubric evaluation of a topic proposal."""
+    topic_request: TopicRequest
+    context: Optional[str] = Field(None, description="Ngữ cảnh nơi sản phẩm được triển khai")
+    problem_statement: Optional[str] = Field(None, description="Vấn đề cần giải quyết")
+    main_actors: Optional[List[str]] = Field(None, description="Người dùng chính")
+    main_flows: Optional[str] = Field(None, description="Các luồng xử lý/chức năng chính")
+    customers_sponsors: Optional[str] = Field(None, description="Khách hàng/nhà tài trợ")
+    approach_theory: Optional[str] = Field(None, description="Hướng tiếp cận về lý thuyết")
+    applied_technology: Optional[str] = Field(None, description="Công nghệ áp dụng")
+    main_deliverables: Optional[str] = Field(None, description="Các sản phẩm cần tạo ra")
+    scope: Optional[str] = Field(None, description="Phạm vi đề tài")
+    size_of_product: Optional[str] = Field(None, description="Độ lớn sản phẩm")
+    packages_breakdown: Optional[List[str]] = Field(None, description="Phân chia thành các gói công việc")
+    complexity: Optional[str] = Field(None, description="Độ phức tạp/tính kỹ thuật")
+    applicability: Optional[str] = Field(None, description="Tính ứng dụng thực tế")
+    feasibility: Optional[str] = Field(None, description="Tính khả thi về công nghệ và thời gian")
+    proposal_text: Optional[str] = Field(
+        None,
+        description="Toàn bộ thuyết minh/đề cương (nếu có) để đánh giá thêm"
+    )

@@ -63,7 +63,7 @@ class MainAgent(BaseAgent):
                 "processing_time": 0.0
             }
             
-            # Step 1: Get trending suggestions if requested (must run before duplicate check)
+            # Step 1: Get trending suggestions if requested
             if request.get_suggestions:
                 suggestions_result = await self._get_trending_suggestions(request)
                 if suggestions_result["success"]:
@@ -82,82 +82,37 @@ class MainAgent(BaseAgent):
                     duplicate_status = duplicate_result["data"]["status"]
                     similarity_score = duplicate_result["data"]["similarity_score"]
                     
-                    # Treat both DUPLICATE_FOUND and POTENTIAL_DUPLICATE as requiring improvement attempts
-                    if duplicate_status in (DuplicationStatus.DUPLICATE_FOUND.value, DuplicationStatus.POTENTIAL_DUPLICATE.value):
+                    if duplicate_status == DuplicationStatus.DUPLICATE_FOUND.value:
                         self.processing_stats["duplicates_found"] += 1
-                        response_data["messages"].append(f"Phát hiện đề tài trùng lặp/khả năng trùng lặp với độ tương tự {similarity_score:.2%}")
+                        response_data["messages"].append(f"Phát hiện đề tài trùng lặp với độ tương tự {similarity_score:.2%}")
                         
-                        # Step 3: Auto-modify with up to 3 attempts if requested
+                        # Step 3: Auto-modify if requested and duplicates found
                         if request.auto_modify:
-                            max_attempts = 3
-                            attempt_index = 0
-                            current_topic_request = request.topic_request
-                            current_duplicate_data = duplicate_result["data"]
-
-                            while attempt_index < max_attempts:
-                                attempt_index += 1
-                                self.log_info(f"Modification attempt {attempt_index}/{max_attempts}")
-                                modification_result = await self._modify_topic(
-                                    current_topic_request, current_duplicate_data
-                                )
-
-                                if not modification_result.get("success"):
-                                    response_data["messages"].append(
-                                        f"Lỗi khi chỉnh sửa đề tài (lần {attempt_index}): {modification_result.get('error', 'Unknown error')}"
-                                    )
-                                    break
-
-                                # Record latest modification
+                            modification_result = await self._modify_topic(
+                                request.topic_request, duplicate_result["data"]
+                            )
+                            
+                            if modification_result["success"]:
                                 response_data["modifications"] = modification_result["data"]
                                 self.processing_stats["modifications_made"] += 1
-
-                                # Update topic with modified version
+                                
+                                # Update topic request with modified version
                                 modified_topic_data = modification_result["data"]["modified_topic"]
-                                current_topic_request = TopicRequest(**modified_topic_data)
-                                response_data["messages"].append(
-                                    f"Đã tự động chỉnh sửa đề tài (lần {attempt_index}) để giảm trùng lặp"
-                                )
-
+                                request.topic_request = TopicRequest(**modified_topic_data)
+                                
+                                response_data["messages"].append("Đã tự động chỉnh sửa đề tài để giảm trùng lặp")
+                                
                                 # Re-check duplicates for modified topic
-                                recheck_result = await self._check_duplicates(current_topic_request)
-                                if not recheck_result.get("success"):
-                                    response_data["messages"].append(
-                                        f"Lỗi khi kiểm tra trùng lặp sau chỉnh sửa (lần {attempt_index})"
-                                    )
-                                    break
-
-                                # Update duplicate check info
-                                response_data["duplicate_check"] = recheck_result["data"]
-                                new_status = recheck_result["data"]["status"]
-                                new_similarity = recheck_result["data"]["similarity_score"]
-                                response_data["messages"].append(
-                                    f"Sau lần chỉnh sửa {attempt_index}, độ tương tự: {new_similarity:.2%}"
-                                )
-
-                                # Stop early if no longer duplicate or potential duplicate
-                                if new_status not in (
-                                    DuplicationStatus.DUPLICATE_FOUND.value,
-                                    DuplicationStatus.POTENTIAL_DUPLICATE.value,
-                                ):
-                                    response_data["messages"].append(
-                                        f"Thành công: Đề tài đã đủ độc đáo sau {attempt_index} lần chỉnh sửa"
-                                    )
-                                    # Update request to final modified topic
-                                    request.topic_request = current_topic_request
-                                    break
-
-                                # Prepare next iteration
-                                current_duplicate_data = recheck_result["data"]
-
+                                recheck_result = await self._check_duplicates(request.topic_request)
+                                if recheck_result["success"]:
+                                    response_data["duplicate_check"] = recheck_result["data"]
+                                    new_similarity = recheck_result["data"]["similarity_score"]
+                                    response_data["messages"].append(f"Sau chỉnh sửa, độ tương tự giảm xuống {new_similarity:.2%}")
                             else:
-                                # Loop exhausted without break (max attempts reached)
-                                response_data["messages"].append(
-                                    f"Đã thực hiện tối đa {max_attempts} lần chỉnh sửa nhưng vẫn còn trùng lặp/khả năng trùng lặp"
-                                )
-                                # Use the latest modified topic for creation attempt anyway
-                                request.topic_request = current_topic_request
-
-                        # If auto_modify is False, just record the state
+                                response_data["messages"].append(f"Lỗi khi chỉnh sửa đề tài: {modification_result.get('error', 'Unknown error')}")
+                                
+                    elif duplicate_status == DuplicationStatus.POTENTIAL_DUPLICATE.value:
+                        response_data["messages"].append(f"Phát hiện đề tài có khả năng trùng lặp với độ tương tự {similarity_score:.2%}")
                     else:
                         response_data["messages"].append("Đề tài có tính độc đáo tốt, không phát hiện trùng lặp")
                         

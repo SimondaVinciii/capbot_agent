@@ -16,7 +16,7 @@ class Topic(Base):
     __tablename__ = "topics"
 
     Id = Column(Integer, primary_key=True, index=True)
-    Title = Column(String(500), nullable=False)
+    Title = Column("EN_Title", String(500), nullable=False)
     Description = Column(Text)
     Objectives = Column(Text)
     SupervisorId = Column(Integer, ForeignKey("users.Id"), nullable=False)
@@ -26,8 +26,16 @@ class Topic(Base):
     IsLegacy = Column(Boolean, default=False)
     IsApproved = Column(Boolean, default=True)
     CreatedAt = Column(DateTime, default=datetime.utcnow)
+    CreatedBy = Column(Text)
+    DeletedAt = Column(DateTime)
     LastModifiedAt = Column(DateTime)
+    LastModifiedBy = Column(Text)
     IsActive = Column(Boolean, default=False)
+    Abbreviation = Column(Text)
+    Content = Column(Text)
+    Context = Column(Text)
+    Problem = Column(Text)
+    VN_title = Column("VN_title", Text)
 
     # Relationships
     versions = relationship("TopicVersion", back_populates="topic")
@@ -40,7 +48,7 @@ class TopicVersion(Base):
     Id = Column(Integer, primary_key=True, index=True)
     TopicId = Column(Integer, ForeignKey("topics.Id"), nullable=False)
     VersionNumber = Column(Integer, nullable=False)
-    Title = Column(String(500), nullable=False)
+    Title = Column("EN_Title", String(500), nullable=False)
     Description = Column(Text)
     Objectives = Column(Text)
     Methodology = Column(Text)
@@ -51,7 +59,15 @@ class TopicVersion(Base):
     SubmittedAt = Column(DateTime)
     SubmittedBy = Column(Integer, ForeignKey("users.Id"))
     CreatedAt = Column(DateTime, default=datetime.utcnow)
+    CreatedBy = Column(Text)
+    DeletedAt = Column(DateTime)
+    LastModifiedAt = Column(DateTime)
+    LastModifiedBy = Column(Text)
     IsActive = Column(Boolean, default=False)
+    Content = Column(Text)
+    Context = Column(Text)
+    Problem = Column(Text)
+    VN_title = Column("VN_title", Text)
 
     # Relationships
     topic = relationship("Topic", back_populates="versions")
