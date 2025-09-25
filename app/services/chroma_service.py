@@ -195,7 +195,8 @@ class ChromaService:
         self, 
         query_content: str, 
         n_results: int = 10, 
-        similarity_threshold: float = None
+        similarity_threshold: float = None,
+        where: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """Search for similar topics based on content similarity.
         
@@ -216,7 +217,7 @@ class ChromaService:
                 query_embeddings=[query_embedding.tolist()],
                 n_results=n_results,
                 include=["documents", "metadatas", "distances"]
-            )
+            , where=where)
             
             # Process results
             similar_topics = []

@@ -63,7 +63,7 @@ def reset_collection():
     description="List items in the Chroma collection with pagination and optional previews.",
 )
 def list_collection(
-    limit: int = Query(20, ge=1, le=200, description="Max items to return"),
+    limit: int = Query(200, ge=1, le=200, description="Max items to return"),
     offset: int = Query(0, ge=0, description="Items to skip"),
     include_documents: bool = Query(False, description="Include document text"),
     include_embeddings: bool = Query(False, description="Include embeddings (large)"),
@@ -90,20 +90,40 @@ def list_collection(
 
         # Normalize response
         items = []
-        ids_list = results.get("ids") or []
-        docs_list = results.get("documents") or []
-        metas_list = results.get("metadatas") or []
+        ids_list = results.get("ids")
+        if ids_list is None:
+            ids_list = []
+        docs_list = results.get("documents")
+        if docs_list is None:
+            docs_list = []
+        metas_list = results.get("metadatas")
+        if metas_list is None:
+            metas_list = []
+        embs_list = results.get("embeddings")
+        if embs_list is None:
+            embs_list = []
 
         for i, item_id in enumerate(ids_list):
             meta = metas_list[i] if i < len(metas_list) else {}
             doc = docs_list[i] if (include_documents and i < len(docs_list)) else None
+            emb = embs_list[i] if (include_embeddings and i < len(embs_list)) else None
+            # Ensure embedding is JSON-serializable (convert numpy arrays to lists)
+            if emb is not None:
+                try:
+                    if hasattr(emb, "tolist"):
+                        emb = emb.tolist()
+                    elif isinstance(emb, tuple):
+                        emb = list(emb)
+                except Exception:
+                    emb = None
             preview = None
             if include_documents and isinstance(doc, str):
                 preview = (doc[:300] + ("..." if len(doc) > 300 else ""))
             items.append({
                 "id": item_id,
                 "metadata": meta,
-                "document_preview": preview
+                "document_preview": preview,
+                "embedding_vector": emb
             })
 
         return {
@@ -197,38 +217,38 @@ async def index_approved_topics_from_db(
                     ).first()
                     if not version:
                         continue
-                    content_parts: List[str] = []
-                    if version.Title:
-                        content_parts.append(f"Title: {version.Title}")
-                    if version.Description:
-                        content_parts.append(f"Description: {version.Description}")
-                    if version.Objectives:
-                        content_parts.append(f"Objectives: {version.Objectives}")
-                    if version.Methodology:
-                        content_parts.append(f"Methodology: {version.Methodology}")
-                    if version.ExpectedOutcomes:
-                        content_parts.append(f"Expected Outcomes: {version.ExpectedOutcomes}")
-                    if version.Requirements:
-                        content_parts.append(f"Requirements: {version.Requirements}")
-                    full_content = " ".join(content_parts)
+                    en_title = version.Title
+                    vn_title = getattr(version, "VN_title", None)
+                    problem = getattr(version, "Problem", None)
+                    context_val = getattr(version, "Context", None)
+                    content_section = getattr(version, "Content", None)
+                    description = version.Description
+                    objectives = version.Objectives
+                    categoryId = topic.CategoryId
+                    semesterId = topic.SemesterId
+                    parts: List[str] = []
+                    for val in [en_title, vn_title, problem, context_val, content_section, description, objectives]:
+                        if val:
+                            parts.append(str(val))
+                    full_content = " ".join(parts)
                     topics_to_index.append({
                         "id": f"{topic.Id}_{version.Id}",
-                        "title": version.Title,
+                        "title": en_title or version.Title,
                         "content": full_content,
                         "metadata": {
                             "topic_id": topic.Id,
                             "version_id": version.Id,
                             "version_number": version.VersionNumber,
-                            "semester_id": topic.SemesterId,
-                            "category_id": topic.CategoryId,
+                            "semesterId": semesterId,
+                            "categoryId": categoryId,
                             "supervisor_id": topic.SupervisorId,
-                            "description": version.Description,
-                            "objectives": version.Objectives,
-                            "methodology": version.Methodology,
-                            "vn_title": getattr(version, "VN_title", None),
-                            "context": getattr(version, "Context", None),
-                            "content_section": getattr(version, "Content", None),
-                            "problem": getattr(version, "Problem", None),
+                            "en_title": en_title,
+                            "vn_title": vn_title,
+                            "problem": problem,
+                            "context": context_val,
+                            "content": content_section,
+                            "description": description,
+                            "objectives": objectives,
                             "document_url": version.DocumentUrl,
                             "status": version.Status,
                             "submitted_at": version.SubmittedAt.isoformat() if version.SubmittedAt else None,
@@ -244,32 +264,37 @@ async def index_approved_topics_from_db(
                         }
                     })
                 else:
-                    content_parts: List[str] = []
-                    if topic.Title:
-                        content_parts.append(f"Title: {topic.Title}")
-                    if topic.Description:
-                        content_parts.append(f"Description: {topic.Description}")
-                    if topic.Objectives:
-                        content_parts.append(f"Objectives: {topic.Objectives}")
-                    full_content = " ".join(content_parts)
+                    en_title = topic.Title
+                    vn_title = getattr(topic, "VN_title", None)
+                    problem = getattr(topic, "Problem", None)
+                    context_val = getattr(topic, "Context", None)
+                    content_section = getattr(topic, "Content", None)
+                    description = topic.Description
+                    objectives = topic.Objectives
+                    categoryId = topic.CategoryId
+                    semesterId = topic.SemesterId
+                    parts: List[str] = []
+                    for val in [en_title, vn_title, problem, context_val, content_section, description, objectives]:
+                        if val:
+                            parts.append(str(val))
+                    full_content = " ".join(parts)
                     topics_to_index.append({
                         "id": f"{topic.Id}",
-                        "title": topic.Title,
+                        "title": en_title or topic.Title,
                         "content": full_content,
                         "metadata": {
                             "topic_id": topic.Id,
-                            "semester_id": topic.SemesterId,
-                            "category_id": topic.CategoryId,
+                            "semesterId": semesterId,
+                            "categoryId": categoryId,
                             "supervisor_id": topic.SupervisorId,
                             "is_approved": getattr(topic, "IsApproved", None),
-                            "description": topic.Description,
-                            "objectives": topic.Objectives,
-                            "methodology": None,
-                            "vn_title": getattr(topic, "VN_title", None),
-                            "abbreviation": getattr(topic, "Abbreviation", None),
-                            "context": getattr(topic, "Context", None),
-                            "content_section": getattr(topic, "Content", None),
-                            "problem": getattr(topic, "Problem", None),
+                            "en_title": en_title,
+                            "vn_title": vn_title,
+                            "problem": problem,
+                            "context": context_val,
+                            "content": content_section,
+                            "description": description,
+                            "objectives": objectives,
                             "created_at": topic.CreatedAt.isoformat() if getattr(topic, "CreatedAt", None) else None,
                             "created_by": getattr(topic, "CreatedBy", None),
                             "last_modified_at": topic.LastModifiedAt.isoformat() if getattr(topic, "LastModifiedAt", None) else None,
@@ -351,39 +376,39 @@ def index_single_submission(
                 if not version:
                     raise HTTPException(404, f"TopicVersion {sub.TopicVersionId} not found or inactive")
 
-                content_parts: List[str] = []
-                if version.Title:
-                    content_parts.append(f"Title: {version.Title}")
-                if version.Description:
-                    content_parts.append(f"Description: {version.Description}")
-                if version.Objectives:
-                    content_parts.append(f"Objectives: {version.Objectives}")
-                if version.Methodology:
-                    content_parts.append(f"Methodology: {version.Methodology}")
-                if version.ExpectedOutcomes:
-                    content_parts.append(f"Expected Outcomes: {version.ExpectedOutcomes}")
-                if version.Requirements:
-                    content_parts.append(f"Requirements: {version.Requirements}")
-                full_content = " ".join(content_parts)
+                en_title = version.Title
+                vn_title = getattr(version, "VN_title", None)
+                problem = getattr(version, "Problem", None)
+                context_val = getattr(version, "Context", None)
+                content_section = getattr(version, "Content", None)
+                description = version.Description
+                objectives = version.Objectives
+                categoryId = topic.CategoryId
+                semesterId = topic.SemesterId
+                parts: List[str] = []
+                for val in [en_title, vn_title, problem, context_val, content_section, description, objectives]:
+                    if val:
+                        parts.append(str(val))
+                full_content = " ".join(parts)
 
                 ok = chroma.add_topic(
                     topic_id=f"{topic.Id}_{version.Id}",
-                    title=version.Title,
+                    title=en_title or version.Title,
                     content=full_content,
                     metadata={
                         "topic_id": topic.Id,
                         "version_id": version.Id,
                         "version_number": version.VersionNumber,
-                        "semester_id": topic.SemesterId,
-                        "category_id": topic.CategoryId,
+                        "semesterId": semesterId,
+                        "categoryId": categoryId,
                         "supervisor_id": topic.SupervisorId,
-                        "description": version.Description,
-                        "objectives": version.Objectives,
-                        "methodology": version.Methodology,
-                        "vn_title": getattr(version, "VN_title", None),
-                        "context": getattr(version, "Context", None),
-                        "content_section": getattr(version, "Content", None),
-                        "problem": getattr(version, "Problem", None),
+                        "en_title": en_title,
+                        "vn_title": vn_title,
+                        "problem": problem,
+                        "context": context_val,
+                        "content": content_section,
+                        "description": description,
+                        "objectives": objectives,
                         "document_url": version.DocumentUrl,
                         "status": version.Status,
                         "submitted_at": version.SubmittedAt.isoformat() if version.SubmittedAt else None,
@@ -399,33 +424,38 @@ def index_single_submission(
                     }
                 )
             else:
-                content_parts: List[str] = []
-                if topic.Title:
-                    content_parts.append(f"Title: {topic.Title}")
-                if topic.Description:
-                    content_parts.append(f"Description: {topic.Description}")
-                if topic.Objectives:
-                    content_parts.append(f"Objectives: {topic.Objectives}")
-                full_content = " ".join(content_parts)
+                en_title = topic.Title
+                vn_title = getattr(topic, "VN_title", None)
+                problem = getattr(topic, "Problem", None)
+                context_val = getattr(topic, "Context", None)
+                content_section = getattr(topic, "Content", None)
+                description = topic.Description
+                objectives = topic.Objectives
+                categoryId = topic.CategoryId
+                semesterId = topic.SemesterId
+                parts: List[str] = []
+                for val in [en_title, vn_title, problem, context_val, content_section, description, objectives]:
+                    if val:
+                        parts.append(str(val))
+                full_content = " ".join(parts)
 
                 ok = chroma.add_topic(
                     topic_id=f"{topic.Id}",
-                    title=topic.Title,
+                    title=en_title or topic.Title,
                     content=full_content,
                     metadata={
                         "topic_id": topic.Id,
-                        "semester_id": topic.SemesterId,
-                        "category_id": topic.CategoryId,
+                        "semesterId": semesterId,
+                        "categoryId": categoryId,
                         "supervisor_id": topic.SupervisorId,
                         "is_approved": getattr(topic, "IsApproved", None),
-                        "description": topic.Description,
-                        "objectives": topic.Objectives,
-                        "methodology": None,
-                        "vn_title": getattr(topic, "VN_title", None),
-                        "abbreviation": getattr(topic, "Abbreviation", None),
-                        "context": getattr(topic, "Context", None),
-                        "content_section": getattr(topic, "Content", None),
-                        "problem": getattr(topic, "Problem", None),
+                        "en_title": en_title,
+                        "vn_title": vn_title,
+                        "problem": problem,
+                        "context": context_val,
+                        "content": content_section,
+                        "description": description,
+                        "objectives": objectives,
                         "created_at": topic.CreatedAt.isoformat() if getattr(topic, "CreatedAt", None) else None,
                         "created_by": getattr(topic, "CreatedBy", None),
                         "last_modified_at": topic.LastModifiedAt.isoformat() if getattr(topic, "LastModifiedAt", None) else None,

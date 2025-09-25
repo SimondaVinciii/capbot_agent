@@ -49,7 +49,8 @@ class DuplicateDetectionAgent(BaseAgent):
             similar_topics = self.chroma_service.search_similar_topics(
                 query_content=full_content,
                 n_results=10,
-                similarity_threshold=0.3  # Lower threshold to get more candidates
+                similarity_threshold=0.3,  # Lower threshold to get more candidates
+                where=input_data.get("where")
             )
             
             # Filter out excluded topic if provided

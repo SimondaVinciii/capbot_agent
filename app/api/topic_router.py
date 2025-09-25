@@ -7,6 +7,7 @@ from app.schemas.schemas import (
     DuplicateCheckResult, TopicSuggestionsResponse, TopicModificationResponse,
     AgentProcessResponse, ErrorResponse
 )
+from pydantic import BaseModel, Field
 from app.services.topic_service import TopicService
 from app.agents.duplicate_detection_agent import DuplicateDetectionAgent
 from app.agents.topic_modification_agent import TopicModificationAgent
@@ -35,31 +36,96 @@ duplicate_agent = DuplicateDetectionAgent()
 modification_agent = TopicModificationAgent()
 rubric_agent = CheckRubricAgent()
 
+class DuplicateAdvancedRequest(BaseModel):
+    eN_Title: str = Field(..., description="English title")
+    abbreviation: Optional[str] = None
+    vN_title: Optional[str] = None
+    problem: Optional[str] = None
+    context: Optional[str] = None
+    content: Optional[str] = None
+    description: Optional[str] = None
+    objectives: Optional[str] = None
+    categoryId: Optional[int] = None
+    semesterId: Optional[int] = None
+    maxStudents: Optional[int] = None
+    fileId: Optional[int] = None
+
+
 @router.post(
     "/check-duplicate-advanced",
     summary="🧠 Check duplicate and auto-suggest modifications",
     description="""
     ## Advanced duplicate check with auto-modification
+    - Input fields follow new vector logic: en_title, vn_title, problem, context, content, description, objectives
     - Uses DuplicateDetectionAgent to detect duplicates from ChromaDB
     - If duplicate or potential duplicate, invokes TopicModificationAgent to suggest improvements
     - Returns duplicate analysis and optional modification proposal
     """,
 )
 async def check_duplicate_advanced(
-    topic_request: TopicRequest,
-    threshold: float = Query(0.8, ge=0.0, le=1.0, description="Similarity threshold to consider duplicate")
+    req: DuplicateAdvancedRequest,
+    threshold: float = Query(0.8, ge=0.0, le=1.0, description="Similarity threshold to consider duplicate"),
+    semester_id: Optional[int] = Query(None, description="Optional semester filter for duplicate search"),
+    last_n_semesters: int = Query(3, ge=1, le=10, description="Number of recent semesters to search")
 ):
     try:
         import time
         t0 = time.time()
-        # Run duplicate detection
+        # Build combined content exactly like indexing logic (same field order)
+        combined_description = " ".join([
+            str(part) for part in [
+                req.eN_Title,
+                req.vN_title,
+                req.problem,
+                req.context,
+                req.content,
+                req.description,
+                req.objectives,
+            ] if part
+        ])
+        # Determine semesters to search (current or provided + last_n_semesters)
+        from app.models.database import get_db, Semester
+        from sqlalchemy.orm import Session
+        from sqlalchemy import desc, and_
+        from datetime import datetime
+        db_gen = get_db()
+        db: Session = next(db_gen)
+        try:
+            # Prefer explicit query param; fallback to body.semesterId; else detect current
+            base_semester_id = semester_id if semester_id is not None else req.semesterId
+            if base_semester_id is None:
+                now = datetime.utcnow()
+                current = db.query(Semester).filter(
+                    and_(
+                        Semester.IsActive == True,
+                        Semester.StartDate <= now,
+                        Semester.EndDate >= now
+                    )
+                ).first()
+                base_semester_id = current.Id if current else None
+
+            semester_ids: List[int] = []
+            if base_semester_id:
+                semesters = db.query(Semester).filter(Semester.IsActive == True).order_by(desc(Semester.StartDate)).all()
+                ordered_ids = [s.Id for s in semesters]
+                start_idx = ordered_ids.index(base_semester_id) if base_semester_id in ordered_ids else 0
+                semester_ids = ordered_ids[start_idx:start_idx + last_n_semesters]
+            else:
+                semesters = db.query(Semester).filter(Semester.IsActive == True).order_by(desc(Semester.StartDate)).limit(last_n_semesters).all()
+                semester_ids = [s.Id for s in semesters]
+        finally:
+            db.close()
+
+        where = {"semesterId": {"$in": semester_ids}} if semester_ids else None
         detection_input = {
-            "topic_title": topic_request.title,
-            "topic_description": topic_request.description or "",
-            "topic_objectives": topic_request.objectives or "",
-            "topic_methodology": getattr(topic_request, "methodology", "") or "",
-            "semester_id": topic_request.semester_id,
+            # Pass content via description only to avoid agent-side recombination mismatches
+            "topic_title": "",
+            "topic_description": combined_description,
+            "topic_objectives": "",
+            "topic_methodology": "",
+            "semester_id": base_semester_id,
             "threshold": threshold,
+            "where": where,
         }
         detection_result = await duplicate_agent.process(detection_input)
 
@@ -80,7 +146,7 @@ async def check_duplicate_advanced(
         # If duplicate or potential duplicate -> propose modifications
         if status in ("duplicate_found", "potential_duplicate"):
             modification_input = {
-                "original_topic": topic_request.dict(),
+                "original_topic": req.dict(),
                 "duplicate_results": dup_data,
                 "modification_preferences": {},
                 "preserve_core_idea": True,
