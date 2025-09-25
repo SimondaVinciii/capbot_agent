@@ -66,7 +66,7 @@ async def check_duplicate_advanced(
     req: Union[DuplicateAdvancedRequest, TopicRequest],
     threshold: float = Query(0.8, ge=0.0, le=1.0, description="Similarity threshold to consider duplicate"),
     semester_id: Optional[int] = Query(None, description="Optional semester filter for duplicate search"),
-    last_n_semesters: int = Query(3, ge=1, le=10, description="Number of recent semesters to search")
+    last_n_semesters: int = Query(3, ge=3, le=10, description="Number of recent semesters to search")
 ):
     try:
         import time
@@ -116,25 +116,37 @@ async def check_duplicate_advanced(
         try:
             # Prefer explicit query param; fallback to body.semesterId; else detect current
             base_semester_id = semester_id if semester_id is not None else body_semester_id
-            if base_semester_id is None:
-                now = datetime.utcnow()
-                current = db.query(Semester).filter(
-                    and_(
-                        Semester.IsActive == True,
-                        Semester.StartDate <= now,
-                        Semester.EndDate >= now
-                    )
-                ).first()
-                base_semester_id = current.Id if current else None
-
             semester_ids: List[int] = []
-            if base_semester_id:
-                semesters = db.query(Semester).filter(Semester.IsActive == True).order_by(desc(Semester.StartDate)).all()
-                ordered_ids = [s.Id for s in semesters]
-                start_idx = ordered_ids.index(base_semester_id) if base_semester_id in ordered_ids else 0
-                semester_ids = ordered_ids[start_idx:start_idx + last_n_semesters]
+
+            # Resolve base semester by id or current date
+            base_semester = None
+            if base_semester_id is not None:
+                base_semester = db.query(Semester).filter(Semester.Id == base_semester_id).first()
+            if base_semester is None:
+                now = datetime.utcnow()
+                base_semester = db.query(Semester).filter(
+                    and_(Semester.StartDate <= now, Semester.EndDate >= now)
+                ).first()
+
+            if base_semester is not None:
+                semesters = (
+                    db.query(Semester)
+                    .filter(Semester.StartDate <= base_semester.StartDate)
+                    .order_by(desc(Semester.StartDate))
+                    .limit(last_n_semesters)
+                    .all()
+                )
+                semester_ids = [s.Id for s in semesters]
             else:
-                semesters = db.query(Semester).filter(Semester.IsActive == True).order_by(desc(Semester.StartDate)).limit(last_n_semesters).all()
+                # Fallback: latest N by StartDate up to now
+                now = datetime.utcnow()
+                semesters = (
+                    db.query(Semester)
+                    .filter(Semester.StartDate <= now)
+                    .order_by(desc(Semester.StartDate))
+                    .limit(last_n_semesters)
+                    .all()
+                )
                 semester_ids = [s.Id for s in semesters]
         finally:
             db.close()

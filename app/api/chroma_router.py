@@ -69,14 +69,15 @@ def list_collection(
     include_embeddings: bool = Query(False, description="Include embeddings (large)"),
     topic_id: Optional[str] = Query(None, description="Filter by exact topic id"),
     supervisor_id: Optional[int] = Query(None, description="Filter by supervisor_id in metadata"),
-    semester_id: Optional[int] = Query(None, description="Filter by semester_id in metadata"),
+    semester_id: Optional[int] = Query(None, description="Filter by semester (semesterId) in metadata"),
 ):
     try:
         where: Dict[str, Any] = {}
         if supervisor_id is not None:
             where["supervisor_id"] = supervisor_id
         if semester_id is not None:
-            where["semester_id"] = semester_id
+            # Use new key used during indexing
+            where["semesterId"] = semester_id
 
         ids = [topic_id] if topic_id else None
         results = chroma.list_items(

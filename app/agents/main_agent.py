@@ -334,16 +334,21 @@ class MainAgent(BaseAgent):
                 "content": full_content,
                 "metadata": {
                     "topic_id": topic_id,
+                    # Use new metadata keys; keep some backward-compat
+                    "semesterId": topic_info["semester_id"],
+                    "categoryId": topic_info.get("category_id"),
                     "semester_id": topic_info["semester_id"],
                     "category_id": topic_info.get("category_id"),
                     "supervisor_id": topic_info["supervisor_id"],
                     "created_at": topic_info["created_at"],
-                    # New Topic fields (if available in ORM)
-                    "abbreviation": topic_info.get("abbreviation"),
+                    # Content-related fields (new schema)
+                    "en_title": topic_info.get("title"),
                     "vn_title": topic_info.get("vn_title"),
-                    "context": topic_info.get("context"),
-                    "content_section": topic_info.get("content"),
                     "problem": topic_info.get("problem"),
+                    "context": topic_info.get("context"),
+                    "content": topic_info.get("content"),
+                    # Extras
+                    "abbreviation": topic_info.get("abbreviation"),
                     "is_approved": topic_info.get("is_approved"),
                     "created_by": topic_info.get("created_by"),
                     "last_modified_at": topic_info.get("last_modified_at"),
