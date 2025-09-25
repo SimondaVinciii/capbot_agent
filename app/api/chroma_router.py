@@ -122,22 +122,23 @@ def list_collection(
 
 @router.post(
     "/index-approved-topics",
-    summary="📊 Index Approved Topics from Database",
+    summary="📊 Index Approved Submissions",
     description="""
-    ## Index latest active TopicVersion per Topic, with Topic fallback
+    ## Index based on approved Submissions (Status = 7)
     
     ### 📊 What gets indexed:
-    - Prefer latest (max VersionNumber) TopicVersion where IsActive = true
-    - If a Topic has no active TopicVersion, index the Topic itself when Topic.IsApproved = true and Topic.IsActive = true
+    - Select all `Submission` with `Status = 7` (Approved)
+    - If a submission has `TopicVersionId` (not null): index using fields from `TopicVersion`
+    - If `TopicVersionId` is null: index using fields from `Topic`
     - Combines fields: Title, Description, Objectives, Methodology, ExpectedOutcomes, Requirements
     - Document ID format:
-      - TopicVersion: {topic_id}_{version_id}
-      - Topic fallback: {topic_id}
+      - TopicVersion-based: {topic_id}_{version_id}
+      - Topic-based: {topic_id}
     - Metadata includes: topic_id, optional version_id/version_number, semester_id, category_id, supervisor_id
     
     ### 🔍 Use Cases:
     - Initial system setup
-    - Refresh ChromaDB with latest active content
+    - Refresh ChromaDB with latest approved content
     - After database migrations or updates
     - Performance optimization and re-indexing
     """,
@@ -159,120 +160,126 @@ def list_collection(
 )
 async def index_approved_topics_from_db(
     semester_id: Optional[int] = Query(None, description="Filter by semester ID"),
-    limit: int = Query(1000, description="Maximum number of topics to index")
+    limit: int = Query(1000, description="Maximum number of submissions to index")
 ):
-    """Index latest active TopicVersion per Topic, with approved Topic fallback."""
+    """Index documents based on approved Submissions (Status = 7)."""
     try:
         import time
         start_time = time.time()
         
-        # Open DB and build payload using latest active versions, with topic fallback
-        from app.models.database import get_db
-        from app.repositories.topic_repository import TopicRepository
+        # Open DB and build payload based on approved submissions
+        from app.models.database import get_db, Submission, Topic, TopicVersion
         from sqlalchemy.orm import Session
+        from sqlalchemy import and_
         
         db_gen = get_db()
         db: Session = next(db_gen)
         try:
-            repo = TopicRepository(db)
-            if semester_id:
-                topics = repo.get_topics_by_semester(semester_id=semester_id, limit=limit, approved_only=False)
+            # Query approved submissions (Status = 7)
+            conditions = [Submission.Status == 7]
+            if semester_id is not None:
+                # Join with Topic via TopicId to filter by semester
+                submissions = db.query(Submission, Topic).join(
+                    Topic, Submission.TopicId == Topic.Id
+                ).filter(and_(*conditions, Topic.SemesterId == semester_id)).order_by(Submission.CreatedAt.desc()).limit(limit).all()
             else:
-                topics = repo.get_all_active_topics(limit=limit)
-            
+                submissions = db.query(Submission, Topic).join(
+                    Topic, Submission.TopicId == Topic.Id
+                ).filter(and_(*conditions)).order_by(Submission.CreatedAt.desc()).limit(limit).all()
+
             topics_to_index: List[Dict[str, Any]] = []
-            total_candidates = 0
-            
-            for topic in topics:
-                total_candidates += 1
-                latest_version = repo.get_latest_topic_version(topic.Id)
-                if latest_version:
-                    # Build from TopicVersion
+            total_candidates = len(submissions)
+
+            for submission, topic in submissions:
+                if submission.TopicVersionId:
+                    version = db.query(TopicVersion).filter(
+                        and_(TopicVersion.Id == submission.TopicVersionId, TopicVersion.IsActive == True)
+                    ).first()
+                    if not version:
+                        continue
                     content_parts: List[str] = []
-                    if latest_version.Title:
-                        content_parts.append(f"Title: {latest_version.Title}")
-                    if latest_version.Description:
-                        content_parts.append(f"Description: {latest_version.Description}")
-                    if latest_version.Objectives:
-                        content_parts.append(f"Objectives: {latest_version.Objectives}")
-                    if latest_version.Methodology:
-                        content_parts.append(f"Methodology: {latest_version.Methodology}")
-                    if latest_version.ExpectedOutcomes:
-                        content_parts.append(f"Expected Outcomes: {latest_version.ExpectedOutcomes}")
-                    if latest_version.Requirements:
-                        content_parts.append(f"Requirements: {latest_version.Requirements}")
+                    if version.Title:
+                        content_parts.append(f"Title: {version.Title}")
+                    if version.Description:
+                        content_parts.append(f"Description: {version.Description}")
+                    if version.Objectives:
+                        content_parts.append(f"Objectives: {version.Objectives}")
+                    if version.Methodology:
+                        content_parts.append(f"Methodology: {version.Methodology}")
+                    if version.ExpectedOutcomes:
+                        content_parts.append(f"Expected Outcomes: {version.ExpectedOutcomes}")
+                    if version.Requirements:
+                        content_parts.append(f"Requirements: {version.Requirements}")
                     full_content = " ".join(content_parts)
                     topics_to_index.append({
-                        "id": f"{topic.Id}_{latest_version.Id}",
-                        "title": latest_version.Title,
+                        "id": f"{topic.Id}_{version.Id}",
+                        "title": version.Title,
                         "content": full_content,
                         "metadata": {
                             "topic_id": topic.Id,
-                            "version_id": latest_version.Id,
-                            "version_number": latest_version.VersionNumber,
+                            "version_id": version.Id,
+                            "version_number": version.VersionNumber,
                             "semester_id": topic.SemesterId,
                             "category_id": topic.CategoryId,
                             "supervisor_id": topic.SupervisorId,
-                            "description": latest_version.Description,
-                            "objectives": latest_version.Objectives,
-                            "methodology": latest_version.Methodology,
-                            # New fields from TopicVersion schema
-                            "vn_title": getattr(latest_version, "VN_title", None),
-                            "context": getattr(latest_version, "Context", None),
-                            "content_section": getattr(latest_version, "Content", None),
-                            "problem": getattr(latest_version, "Problem", None),
-                            "document_url": latest_version.DocumentUrl,
-                            "status": latest_version.Status,
-                            "submitted_at": latest_version.SubmittedAt.isoformat() if latest_version.SubmittedAt else None,
-                            "submitted_by": latest_version.SubmittedBy,
-                            "created_at": latest_version.CreatedAt.isoformat() if latest_version.CreatedAt else None,
-                            "created_by": getattr(latest_version, "CreatedBy", None),
-                            "last_modified_at": latest_version.LastModifiedAt.isoformat() if latest_version.LastModifiedAt else None,
-                            "last_modified_by": getattr(latest_version, "LastModifiedBy", None),
-                            "deleted_at": latest_version.DeletedAt.isoformat() if getattr(latest_version, "DeletedAt", None) else None,
-                            "source": "TopicVersion",
+                            "description": version.Description,
+                            "objectives": version.Objectives,
+                            "methodology": version.Methodology,
+                            "vn_title": getattr(version, "VN_title", None),
+                            "context": getattr(version, "Context", None),
+                            "content_section": getattr(version, "Content", None),
+                            "problem": getattr(version, "Problem", None),
+                            "document_url": version.DocumentUrl,
+                            "status": version.Status,
+                            "submitted_at": version.SubmittedAt.isoformat() if version.SubmittedAt else None,
+                            "submitted_by": version.SubmittedBy,
+                            "created_at": version.CreatedAt.isoformat() if version.CreatedAt else None,
+                            "created_by": getattr(version, "CreatedBy", None),
+                            "last_modified_at": version.LastModifiedAt.isoformat() if version.LastModifiedAt else None,
+                            "last_modified_by": getattr(version, "LastModifiedBy", None),
+                            "deleted_at": version.DeletedAt.isoformat() if getattr(version, "DeletedAt", None) else None,
+                            "source": "Submission-TopicVersion",
+                            "submission_id": submission.Id,
                             "embedding_provider": chroma.embedding_provider
                         }
                     })
                 else:
-                    # Fallback to Topic only when approved and active
-                    if getattr(topic, "IsApproved", False) and getattr(topic, "IsActive", False):
-                        content_parts: List[str] = []
-                        if topic.Title:
-                            content_parts.append(f"Title: {topic.Title}")
-                        if topic.Description:
-                            content_parts.append(f"Description: {topic.Description}")
-                        if topic.Objectives:
-                            content_parts.append(f"Objectives: {topic.Objectives}")
-                        full_content = " ".join(content_parts)
-                        topics_to_index.append({
-                            "id": f"{topic.Id}",
-                            "title": topic.Title,
-                            "content": full_content,
-                            "metadata": {
-                                "topic_id": topic.Id,
-                                "semester_id": topic.SemesterId,
-                                "category_id": topic.CategoryId,
-                                "supervisor_id": topic.SupervisorId,
-                                "is_approved": topic.IsApproved,
-                                "description": topic.Description,
-                                "objectives": topic.Objectives,
-                                "methodology": None,
-                                # New fields from Topic schema
-                                "vn_title": getattr(topic, "VN_title", None),
-                                "abbreviation": getattr(topic, "Abbreviation", None),
-                                "context": getattr(topic, "Context", None),
-                                "content_section": getattr(topic, "Content", None),
-                                "problem": getattr(topic, "Problem", None),
-                                "created_at": topic.CreatedAt.isoformat() if getattr(topic, "CreatedAt", None) else None,
-                                "created_by": getattr(topic, "CreatedBy", None),
-                                "last_modified_at": topic.LastModifiedAt.isoformat() if getattr(topic, "LastModifiedAt", None) else None,
-                                "last_modified_by": getattr(topic, "LastModifiedBy", None),
-                                "deleted_at": topic.DeletedAt.isoformat() if getattr(topic, "DeletedAt", None) else None,
-                                "source": "Topic",
-                                "embedding_provider": chroma.embedding_provider
-                            }
-                        })
+                    content_parts: List[str] = []
+                    if topic.Title:
+                        content_parts.append(f"Title: {topic.Title}")
+                    if topic.Description:
+                        content_parts.append(f"Description: {topic.Description}")
+                    if topic.Objectives:
+                        content_parts.append(f"Objectives: {topic.Objectives}")
+                    full_content = " ".join(content_parts)
+                    topics_to_index.append({
+                        "id": f"{topic.Id}",
+                        "title": topic.Title,
+                        "content": full_content,
+                        "metadata": {
+                            "topic_id": topic.Id,
+                            "semester_id": topic.SemesterId,
+                            "category_id": topic.CategoryId,
+                            "supervisor_id": topic.SupervisorId,
+                            "is_approved": getattr(topic, "IsApproved", None),
+                            "description": topic.Description,
+                            "objectives": topic.Objectives,
+                            "methodology": None,
+                            "vn_title": getattr(topic, "VN_title", None),
+                            "abbreviation": getattr(topic, "Abbreviation", None),
+                            "context": getattr(topic, "Context", None),
+                            "content_section": getattr(topic, "Content", None),
+                            "problem": getattr(topic, "Problem", None),
+                            "created_at": topic.CreatedAt.isoformat() if getattr(topic, "CreatedAt", None) else None,
+                            "created_by": getattr(topic, "CreatedBy", None),
+                            "last_modified_at": topic.LastModifiedAt.isoformat() if getattr(topic, "LastModifiedAt", None) else None,
+                            "last_modified_by": getattr(topic, "LastModifiedBy", None),
+                            "deleted_at": topic.DeletedAt.isoformat() if getattr(topic, "DeletedAt", None) else None,
+                            "source": "Submission-Topic",
+                            "submission_id": submission.Id,
+                            "embedding_provider": chroma.embedding_provider
+                        }
+                    })
             
             if not topics_to_index:
                 return {
@@ -285,7 +292,7 @@ async def index_approved_topics_from_db(
             indexed_count = chroma.add_topics_batch(topics_to_index)
             processing_time = time.time() - start_time
             return {
-                "message": "Successfully indexed latest active versions with topic fallback",
+                "message": "Successfully indexed approved submissions",
                 "indexed_count": indexed_count,
                 "total_candidates": total_candidates,
                 "processing_time": round(processing_time, 2)
@@ -302,4 +309,142 @@ async def index_approved_topics_from_db(
 
 
 
+
+@router.post(
+    "/index-single",
+    summary="➕ Index a single document by submissionId",
+    description="""
+    Index exactly one record into ChromaDB using a `submissionId`.
+    
+    Rules:
+    - The submission must have Status = 7 (Approved)
+    - If `TopicVersionId` is present: index using `TopicVersion` fields with id `{topic_id}_{version_id}`
+    - If `TopicVersionId` is null: index using `Topic` fields with id `{topic_id}`
+    """,
+)
+def index_single_submission(
+    submission_id: int = Query(..., description="Submission ID to index")
+):
+    try:
+        from app.models.database import get_db, Submission, Topic, TopicVersion
+        from sqlalchemy.orm import Session
+        from sqlalchemy import and_
+
+        db_gen = get_db()
+        db: Session = next(db_gen)
+        try:
+            sub: Submission = db.query(Submission).filter(Submission.Id == submission_id).first()
+            if not sub:
+                raise HTTPException(404, f"Submission {submission_id} not found")
+            if sub.Status != 7:
+                raise HTTPException(400, "Submission is not approved (Status != 7)")
+
+            topic: Topic = db.query(Topic).filter(Topic.Id == sub.TopicId).first()
+            if not topic:
+                raise HTTPException(404, f"Topic {sub.TopicId} not found")
+
+            # Build item
+            if sub.TopicVersionId:
+                version: TopicVersion = db.query(TopicVersion).filter(
+                    and_(TopicVersion.Id == sub.TopicVersionId, TopicVersion.IsActive == True)
+                ).first()
+                if not version:
+                    raise HTTPException(404, f"TopicVersion {sub.TopicVersionId} not found or inactive")
+
+                content_parts: List[str] = []
+                if version.Title:
+                    content_parts.append(f"Title: {version.Title}")
+                if version.Description:
+                    content_parts.append(f"Description: {version.Description}")
+                if version.Objectives:
+                    content_parts.append(f"Objectives: {version.Objectives}")
+                if version.Methodology:
+                    content_parts.append(f"Methodology: {version.Methodology}")
+                if version.ExpectedOutcomes:
+                    content_parts.append(f"Expected Outcomes: {version.ExpectedOutcomes}")
+                if version.Requirements:
+                    content_parts.append(f"Requirements: {version.Requirements}")
+                full_content = " ".join(content_parts)
+
+                ok = chroma.add_topic(
+                    topic_id=f"{topic.Id}_{version.Id}",
+                    title=version.Title,
+                    content=full_content,
+                    metadata={
+                        "topic_id": topic.Id,
+                        "version_id": version.Id,
+                        "version_number": version.VersionNumber,
+                        "semester_id": topic.SemesterId,
+                        "category_id": topic.CategoryId,
+                        "supervisor_id": topic.SupervisorId,
+                        "description": version.Description,
+                        "objectives": version.Objectives,
+                        "methodology": version.Methodology,
+                        "vn_title": getattr(version, "VN_title", None),
+                        "context": getattr(version, "Context", None),
+                        "content_section": getattr(version, "Content", None),
+                        "problem": getattr(version, "Problem", None),
+                        "document_url": version.DocumentUrl,
+                        "status": version.Status,
+                        "submitted_at": version.SubmittedAt.isoformat() if version.SubmittedAt else None,
+                        "submitted_by": version.SubmittedBy,
+                        "created_at": version.CreatedAt.isoformat() if version.CreatedAt else None,
+                        "created_by": getattr(version, "CreatedBy", None),
+                        "last_modified_at": version.LastModifiedAt.isoformat() if version.LastModifiedAt else None,
+                        "last_modified_by": getattr(version, "LastModifiedBy", None),
+                        "deleted_at": version.DeletedAt.isoformat() if getattr(version, "DeletedAt", None) else None,
+                        "source": "Submission-TopicVersion",
+                        "submission_id": sub.Id,
+                        "embedding_provider": chroma.embedding_provider
+                    }
+                )
+            else:
+                content_parts: List[str] = []
+                if topic.Title:
+                    content_parts.append(f"Title: {topic.Title}")
+                if topic.Description:
+                    content_parts.append(f"Description: {topic.Description}")
+                if topic.Objectives:
+                    content_parts.append(f"Objectives: {topic.Objectives}")
+                full_content = " ".join(content_parts)
+
+                ok = chroma.add_topic(
+                    topic_id=f"{topic.Id}",
+                    title=topic.Title,
+                    content=full_content,
+                    metadata={
+                        "topic_id": topic.Id,
+                        "semester_id": topic.SemesterId,
+                        "category_id": topic.CategoryId,
+                        "supervisor_id": topic.SupervisorId,
+                        "is_approved": getattr(topic, "IsApproved", None),
+                        "description": topic.Description,
+                        "objectives": topic.Objectives,
+                        "methodology": None,
+                        "vn_title": getattr(topic, "VN_title", None),
+                        "abbreviation": getattr(topic, "Abbreviation", None),
+                        "context": getattr(topic, "Context", None),
+                        "content_section": getattr(topic, "Content", None),
+                        "problem": getattr(topic, "Problem", None),
+                        "created_at": topic.CreatedAt.isoformat() if getattr(topic, "CreatedAt", None) else None,
+                        "created_by": getattr(topic, "CreatedBy", None),
+                        "last_modified_at": topic.LastModifiedAt.isoformat() if getattr(topic, "LastModifiedAt", None) else None,
+                        "last_modified_by": getattr(topic, "LastModifiedBy", None),
+                        "deleted_at": topic.DeletedAt.isoformat() if getattr(topic, "DeletedAt", None) else None,
+                        "source": "Submission-Topic",
+                        "submission_id": sub.Id,
+                        "embedding_provider": chroma.embedding_provider
+                    }
+                )
+
+            if not ok:
+                raise HTTPException(500, "Failed to add document to ChromaDB")
+
+            return {"message": "Indexed submission successfully", "submission_id": submission_id}
+        finally:
+            db.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to index submission: {str(e)}")
 

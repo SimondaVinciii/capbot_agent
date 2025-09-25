@@ -115,7 +115,7 @@ class ChromaService:
             embedding = self._create_embedding(content)
             
             # Prepare metadata
-            doc_metadata = metadata or {}
+            doc_metadata = self._sanitize_metadata(metadata or {})
             doc_metadata.update({
                 "title": title,
                 "content_length": len(content)
@@ -159,7 +159,7 @@ class ChromaService:
                 topic_id = str(topic["id"])
                 content = topic["content"]
                 title = topic["title"]
-                metadata = topic.get("metadata", {})
+                metadata = self._sanitize_metadata(topic.get("metadata", {}))
                 
                 # Create embedding
                 embedding = self._create_embedding(content)
@@ -325,7 +325,7 @@ class ChromaService:
         """Upsert a single topic into the collection (insert or update)."""
         try:
             embedding = self._create_embedding(content)
-            doc_metadata = (metadata or {}).copy()
+            doc_metadata = self._sanitize_metadata((metadata or {}).copy())
             doc_metadata.update({
                 "title": title,
                 "content_length": len(content)
@@ -405,7 +405,7 @@ class ChromaService:
                 topic_id = str(topic["id"])
                 content = topic["content"]
                 title = topic["title"]
-                metadata = topic.get("metadata", {})
+                metadata = self._sanitize_metadata(topic.get("metadata", {}))
                 embedding = self._create_embedding(content)
                 doc_metadata = metadata.copy()
                 doc_metadata.update({
@@ -535,7 +535,7 @@ class ChromaService:
     def upsert_topic(self, topic_id: str, title: str, content: str, metadata: Dict[str, Any] = None) -> bool:
         try:
             embedding = self._create_embedding(content)
-            doc_metadata = (metadata or {}).copy()
+            doc_metadata = self._sanitize_metadata((metadata or {}).copy())
             doc_metadata.update({
                 "title": title,
                 "content_length": len(content)
@@ -570,7 +570,7 @@ class ChromaService:
                 topic_id = str(topic["id"])
                 content = topic["content"]
                 title = topic["title"]
-                metadata = topic.get("metadata", {})
+                metadata = self._sanitize_metadata(topic.get("metadata", {}))
                 embedding = self._create_embedding(content)
                 doc_metadata = metadata.copy()
                 doc_metadata.update({
@@ -596,4 +596,23 @@ class ChromaService:
         except Exception as e:
             self.logger.error(f"Error upserting topics batch: {e}")
             return 0
+
+    def _sanitize_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensure metadata contains only Chroma-supported primitive values.
+        - Drop keys with None values
+        - Convert non-primitive values to strings
+        """
+        sanitized: Dict[str, Any] = {}
+        for key, value in (metadata or {}).items():
+            if value is None:
+                continue
+            if isinstance(value, (str, int, float, bool)):
+                sanitized[key] = value
+            else:
+                try:
+                    sanitized[key] = str(value)
+                except Exception:
+                    # As a last resort, skip if cannot stringify
+                    continue
+        return sanitized
 
