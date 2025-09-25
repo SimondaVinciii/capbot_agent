@@ -37,7 +37,7 @@ class DuplicateDetectionAgent(BaseAgent):
             exclude_topic_id = input_data.get("exclude_topic_id")  # For updates
             threshold = input_data.get("threshold", self.similarity_threshold)
             
-            # Combine all topic content for similarity check
+            # Combine all topic content for similarity check (label-free to match Chroma indexing)
             full_content = self._combine_topic_content(
                 title=topic_title,
                 description=topic_description,
@@ -46,12 +46,23 @@ class DuplicateDetectionAgent(BaseAgent):
             )
             
             # Search for similar topics in ChromaDB
+            where_filter = input_data.get("where")
+            self.log_info(f"Searching for similar topics with where filter: {where_filter}")
             similar_topics = self.chroma_service.search_similar_topics(
                 query_content=full_content,
-                n_results=10,
-                similarity_threshold=0.3,  # Lower threshold to get more candidates
-                where=input_data.get("where")
+                n_results=3,
+                similarity_threshold=0.8,
+                where=where_filter
             )
+            # Fallback: if no results with where filter, try again without where
+            if not similar_topics and where_filter:
+                self.log_info("[dup] No candidates with where filter; retrying without filter")
+                similar_topics = self.chroma_service.search_similar_topics(
+                    query_content=full_content,
+                    n_results=3,
+                    similarity_threshold=0.8,
+                    where=None
+                )
             
             # Filter out excluded topic if provided
             if exclude_topic_id:
@@ -69,15 +80,18 @@ class DuplicateDetectionAgent(BaseAgent):
                     )
                 ]
             
-            # Filter by semester if provided, but fallback to no filter if empty
-            if semester_id:
+            # If a Chroma 'where' filter was used upstream, skip additional semester filtering here.
+            if not input_data.get("where") and semester_id:
                 pre_filter = list(similar_topics)
                 similar_topics = [
                     topic for topic in similar_topics
-                    if topic.get("metadata", {}).get("semester_id") == semester_id
+                    if (
+                        topic.get("metadata", {}).get("semester_id") == semester_id or
+                        topic.get("metadata", {}).get("semesterId") == semester_id
+                    )
                 ]
                 if not similar_topics:
-                    # Fallback: no semester filter (to avoid false negatives when old docs lack semester_id)
+                    # Fallback: no semester filter (to avoid false negatives when older docs lack semester metadata)
                     similar_topics = pre_filter
             
             # Analyze similarity results
@@ -115,19 +129,17 @@ class DuplicateDetectionAgent(BaseAgent):
         objectives: str = "", 
         methodology: str = ""
     ) -> str:
-        """Combine all topic content into a single string for similarity comparison."""
-        content_parts = []
-        
+        """Combine topic content using a label-free concatenation to match Chroma indexing."""
+        content_parts: List[str] = []
         if title:
-            content_parts.append(f"Title: {title}")
+            content_parts.append(title)
         if description:
-            content_parts.append(f"Description: {description}")
+            content_parts.append(description)
         if objectives:
-            content_parts.append(f"Objectives: {objectives}")
+            content_parts.append(objectives)
         if methodology:
-            content_parts.append(f"Methodology: {methodology}")
-        
-        return " ".join(content_parts)
+            content_parts.append(methodology)
+        return " ".join([part for part in content_parts if part])
     
     async def _analyze_similarity_results(
         self,
@@ -195,21 +207,36 @@ class DuplicateDetectionAgent(BaseAgent):
                     enhanced_analysis, duplicate_candidates
                 )
         
-        # Format similar topics for response
+        # Format similar topics for response (align keys with new Chroma metadata)
         formatted_similar_topics = []
         for topic in similar_topics[:5]:  # Top 5 most similar
-            metadata = topic.get("metadata", {})  # Thêm dòng này
+            metadata = topic.get("metadata", {})
             formatted_topic = {
-                "topic_id": int(topic["id"]),
-                "title": metadata.get("title", ""),
-                "description": metadata.get("description", ""),
-                "objectives": metadata.get("objectives", ""),
-                "methodology": metadata.get("methodology", ""),
-                "similarity_score": topic["similarity_score"],
-                "semester_id": metadata.get("semester_id"),
-                "category_id": metadata.get("category_id"),
-                "supervisor_id": metadata.get("supervisor_id"),
-                "created_at": metadata.get("created_at")
+                # Identifiers
+                "id": topic.get("id"),
+                "topicId": metadata.get("topic_id") or metadata.get("topicId"),
+                "versionId": metadata.get("version_id") or metadata.get("versionId"),
+                "versionNumber": metadata.get("version_number") or metadata.get("versionNumber"),
+                "submissionId": metadata.get("submission_id") or metadata.get("submissionId"),
+                # Titles and content fields
+                "eN_Title": metadata.get("en_title") or metadata.get("eN_Title"),
+                "vN_title": metadata.get("vn_title") or metadata.get("vN_title"),
+                "problem": metadata.get("problem"),
+                "context": metadata.get("context"),
+                "content": metadata.get("content"),
+                "description": metadata.get("description"),
+                "objectives": metadata.get("objectives"),
+                # Classification / ownership
+                "categoryId": metadata.get("categoryId") or metadata.get("category_id"),
+                "semesterId": metadata.get("semesterId") or metadata.get("semester_id"),
+                "supervisorId": metadata.get("supervisor_id") or metadata.get("supervisorId"),
+                # Extra
+                "documentUrl": metadata.get("document_url") or metadata.get("documentUrl"),
+                "status": metadata.get("status"),
+                "source": metadata.get("source"),
+                "createdAt": metadata.get("created_at") or metadata.get("createdAt"),
+                # Similarity
+                "similarity_score": topic.get("similarity_score", 0.0)
             }
             formatted_similar_topics.append(formatted_topic)
         

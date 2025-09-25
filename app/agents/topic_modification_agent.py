@@ -45,6 +45,8 @@ class TopicModificationAgent(BaseAgent):
                 preferences=modification_preferences,
                 preserve_core_idea=preserve_core_idea
             )
+            # Normalize and backfill required fields for TopicRequest
+            modified_topic = self._normalize_modified_topic(modified_topic, original_topic)
             
             # Calculate expected similarity improvement
             similarity_improvement = self._estimate_similarity_improvement(
@@ -144,7 +146,7 @@ class TopicModificationAgent(BaseAgent):
         similarity_score = duplicate_results.get("similarity_score", 0.0)
         
         similar_topics_text = "\n".join([
-            f"- {topic.get('title', 'N/A')} (Similarity: {topic.get('similarity_score', 0):.2%})"
+            f"- {topic.get('eN_Title') or topic.get('vN_title') or topic.get('title', 'N/A')} (Similarity: {topic.get('similarity_score', 0):.2%})"
             for topic in similar_topics[:3]
         ])
         
@@ -163,15 +165,18 @@ class TopicModificationAgent(BaseAgent):
             else "Có thể thay đổi ý tưởng cốt lõi nếu cần thiết."
         )
         
+        # Prefer new schema title if provided
+        orig_title = original_topic.get('title') or original_topic.get('eN_Title') or original_topic.get('vN_title') or ''
         prompt = f"""
 Bạn là chuyên gia tư vấn đề tài nghiên cứu. Nhiệm vụ: chỉnh sửa đề tài để giảm độ trùng lặp.
 
 ## ĐỀ TÀI GỐC:
-Tiêu đề: {original_topic.get('title', '')}
+Tiêu đề: {orig_title}
 Mô tả: {original_topic.get('description', '')}
 Mục tiêu: {original_topic.get('objectives', '')}
-Phương pháp: {original_topic.get('methodology', '')}
-Kết quả mong đợi: {original_topic.get('expected_outcomes', '')}
+Vấn đề (problem): {original_topic.get('problem', '')}
+Bối cảnh (context): {original_topic.get('context', '')}
+Nội dung (content): {original_topic.get('content', '')}
 
 ## PHÂN TÍCH TRÙNG LẶP:
 Độ tương tự cao nhất: {similarity_score:.2%}
@@ -188,22 +193,22 @@ Các đề tài tương tự:
 4. Giữ nguyên các thông tin cơ bản (supervisor_id, semester_id, category_id, max_students)
 
 ## HƯỚNG DẪN CHỈNH SỬA:
-- Thay đổi góc độ tiếp cận hoặc phạm vi nghiên cứu
-- Điều chỉnh mục tiêu cụ thể hoặc phương pháp thực hiện
-- Thêm yếu tố độc đáo hoặc ứng dụng mới
-- Thay đổi đối tượng nghiên cứu hoặc lĩnh vực ứng dụng
+- Điều chỉnh eN_Title (title) để rõ ràng và khác biệt
+- Làm rõ problem, context và content theo hướng khác biệt
+- Tinh chỉnh objectives và description để nhấn mạnh điểm mới
+- Không thay đổi supervisor_id, semester_id, category_id, max_students
 
-Trả về kết quả trong format JSON:
+Trả về kết quả trong format JSON (ưu tiên trường mới). Nếu một trường không thay đổi, copy từ dữ liệu gốc. Các *id phải là số nguyên.
 {{
-  "title": "Tiêu đề đã chỉnh sửa",
+  "title": "Tiêu đề EN đã chỉnh sửa",
   "description": "Mô tả đã chỉnh sửa", 
   "objectives": "Mục tiêu đã chỉnh sửa",
-  "methodology": "Phương pháp đã chỉnh sửa",
-  "expected_outcomes": "Kết quả mong đợi đã chỉnh sửa",
-  "requirements": "Yêu cầu đã chỉnh sửa",
-  "supervisor_id": {original_topic.get('supervisor_id')},
-  "semester_id": {original_topic.get('semester_id')},
-  "category_id": {original_topic.get('category_id')},
+  "problem": "(tuỳ chọn) Bản chỉnh sửa của problem",
+  "context": "(tuỳ chọn) Bản chỉnh sửa của context",
+  "content": "(tuỳ chọn) Bản chỉnh sửa của content",
+  "supervisor_id": {original_topic.get('supervisor_id') or original_topic.get('supervisorId') or 1},
+  "semester_id": {original_topic.get('semester_id') or original_topic.get('semesterId') or 1},
+  "category_id": {original_topic.get('category_id') or original_topic.get('categoryId') or 0},
   "max_students": {original_topic.get('max_students', 1)},
   "modifications_made": [
     "Danh sách các thay đổi đã thực hiện"
@@ -211,7 +216,7 @@ Trả về kết quả trong format JSON:
   "rationale": "Giải thích chi tiết về lý do và cách thức chỉnh sửa"
 }}
 
-Đảm bảo JSON hợp lệ và đầy đủ thông tin.
+Đảm bảo JSON hợp lệ và đầy đủ thông tin. Trả lời hoàn toàn bằng tiếng Việt.
 """
         return prompt
     
@@ -231,7 +236,7 @@ Trả về kết quả trong format JSON:
             json_text = response_text[json_start:json_end]
             modified_data = json.loads(json_text)
             
-            # Ensure all required fields are present
+            # Ensure all required fields are present (and ints for ids)
             required_fields = ['title', 'description', 'objectives', 'supervisor_id', 'semester_id']
             for field in required_fields:
                 if field not in modified_data:
@@ -239,7 +244,35 @@ Trả về kết quả trong format JSON:
                         modified_data[field] = original_topic[field]
                     else:
                         modified_data[field] = ""
+
+            # Backfill category_id and max_students if missing
+            if 'category_id' not in modified_data:
+                modified_data['category_id'] = original_topic.get('category_id') or original_topic.get('categoryId') or 0
+            if 'max_students' not in modified_data:
+                modified_data['max_students'] = original_topic.get('max_students', 1)
+
+            # Coerce numeric fields to int if possible
+            for k in ['supervisor_id', 'semester_id', 'category_id', 'max_students']:
+                try:
+                    if modified_data.get(k) is not None and modified_data.get(k) != "":
+                        modified_data[k] = int(modified_data[k])
+                except Exception:
+                    # Fallback to original values or safe defaults
+                    if k in original_topic and original_topic.get(k) is not None:
+                        try:
+                            modified_data[k] = int(original_topic.get(k))
+                        except Exception:
+                            pass
             
+            # Remove deprecated fields and ensure new vector fields exist
+            for drop_key in ["methodology", "expected_outcomes", "requirements"]:
+                if drop_key in modified_data:
+                    modified_data.pop(drop_key, None)
+
+            for new_key in ["problem", "context", "content"]:
+                if new_key not in modified_data:
+                    modified_data[new_key] = original_topic.get(new_key, "")
+
             # Ensure modifications_made and rationale are present
             if 'modifications_made' not in modified_data:
                 modified_data['modifications_made'] = ["Đã thực hiện các điều chỉnh để giảm trùng lặp"]
@@ -252,6 +285,77 @@ Trả về kết quả trong format JSON:
         except Exception as e:
             self.log_error("Error parsing modification response", e)
             return self._create_fallback_modification(original_topic)
+
+    def _normalize_modified_topic(self, modified_topic: Dict[str, Any], original_topic: Dict[str, Any]) -> Dict[str, Any]:
+        """Backfill and coerce fields to satisfy TopicRequest schema.
+        - Ensure required strings present
+        - Ensure numeric ids are ints
+        - Prefer existing values; fallback to original or sensible defaults
+        """
+        normalized = dict(modified_topic or {})
+
+        # Required textual fields
+        for key in ["title", "description", "objectives"]:
+            if not normalized.get(key):
+                # prefer original fields, including new schema keys for title
+                if key == "title":
+                    normalized[key] = (
+                        original_topic.get("title")
+                        or original_topic.get("eN_Title")
+                        or original_topic.get("vN_title")
+                        or ""
+                    )
+                else:
+                    normalized[key] = original_topic.get(key, "")
+
+        # Numeric fields with coercion
+        def pick_int(*candidates, default=None):
+            for val in candidates:
+                if val is None or val == "":
+                    continue
+                try:
+                    return int(val)
+                except Exception:
+                    continue
+            return default
+
+        normalized["supervisor_id"] = pick_int(
+            normalized.get("supervisor_id"),
+            original_topic.get("supervisor_id"),
+            original_topic.get("supervisorId"),
+            default=1
+        )
+        normalized["semester_id"] = pick_int(
+            normalized.get("semester_id"),
+            original_topic.get("semester_id"),
+            original_topic.get("semesterId"),
+            default=1
+        )
+        normalized["category_id"] = pick_int(
+            normalized.get("category_id"),
+            original_topic.get("category_id"),
+            original_topic.get("categoryId"),
+            default=0
+        )
+        normalized["max_students"] = pick_int(
+            normalized.get("max_students"),
+            original_topic.get("max_students"),
+            default=1
+        )
+
+        # Ensure arrays/strings present
+        if not normalized.get("modifications_made"):
+            normalized["modifications_made"] = modified_topic.get("modifications_made", [
+                "Điều chỉnh tiêu đề để tăng tính khác biệt",
+                "Bổ sung phương pháp tiếp cận độc đáo"
+            ])
+        if not normalized.get("rationale"):
+            normalized["rationale"] = modified_topic.get(
+                "rationale",
+                "Đề tài đã được chỉnh sửa để tăng tính độc đáo và giảm trùng lặp."
+            )
+
+        return normalized
     
     def _create_fallback_modification(self, original_topic: Dict[str, Any]) -> Dict[str, Any]:
         """Create fallback modification when AI parsing fails."""
@@ -267,10 +371,6 @@ Trả về kết quả trong format JSON:
         else:
             modified_title = f"{original_title} - Phiên bản cải tiến"
         
-        # Add unique methodology elements
-        original_methodology = original_topic.get('methodology', '')
-        modified_methodology = f"{original_methodology} Đề tài sẽ tập trung vào phương pháp tiếp cận độc đáo và tính ứng dụng thực tế cao."
-        
         # Add specific objectives
         original_objectives = original_topic.get('objectives', '')
         modified_objectives = f"{original_objectives} Đặc biệt chú trọng vào tính khác biệt và giá trị ứng dụng trong bối cảnh hiện tại."
@@ -279,16 +379,16 @@ Trả về kết quả trong format JSON:
             "title": modified_title,
             "description": original_topic.get('description', ''),
             "objectives": modified_objectives,
-            "methodology": modified_methodology,
-            "expected_outcomes": original_topic.get('expected_outcomes', ''),
-            "requirements": original_topic.get('requirements', ''),
-            "supervisor_id": original_topic.get('supervisor_id'),
-            "semester_id": original_topic.get('semester_id'),
-            "category_id": original_topic.get('category_id'),
+            "problem": original_topic.get('problem', ''),
+            "context": original_topic.get('context', ''),
+            "content": original_topic.get('content', ''),
+            "supervisor_id": original_topic.get('supervisor_id') or original_topic.get('supervisorId') or 1,
+            "semester_id": original_topic.get('semester_id') or original_topic.get('semesterId') or 1,
+            "category_id": original_topic.get('category_id') or original_topic.get('categoryId') or 0,
             "max_students": original_topic.get('max_students', 1),
             "modifications_made": [
                 "Điều chỉnh tiêu đề để tăng tính khác biệt",
-                "Bổ sung phương pháp tiếp cận độc đáo",
+                "Làm rõ problem, context, content theo hướng khác biệt",
                 "Làm rõ mục tiêu và tính ứng dụng"
             ],
             "rationale": "Đề tài đã được điều chỉnh để giảm độ tương tự với các đề tài hiện có trong cơ sở dữ liệu."

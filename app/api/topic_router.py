@@ -1,7 +1,7 @@
 """Topic Management API endpoints."""
 
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, UploadFile, File, Form
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from app.schemas.schemas import (
     TopicRequest, TopicResponse, TopicVersionRequest, TopicVersionResponse,
     DuplicateCheckResult, TopicSuggestionsResponse, TopicModificationResponse,
@@ -63,7 +63,7 @@ class DuplicateAdvancedRequest(BaseModel):
     """,
 )
 async def check_duplicate_advanced(
-    req: DuplicateAdvancedRequest,
+    req: Union[DuplicateAdvancedRequest, TopicRequest],
     threshold: float = Query(0.8, ge=0.0, le=1.0, description="Similarity threshold to consider duplicate"),
     semester_id: Optional[int] = Query(None, description="Optional semester filter for duplicate search"),
     last_n_semesters: int = Query(3, ge=1, le=10, description="Number of recent semesters to search")
@@ -71,16 +71,39 @@ async def check_duplicate_advanced(
     try:
         import time
         t0 = time.time()
+        # Normalize request to new schema regardless of legacy/new input
+        if isinstance(req, DuplicateAdvancedRequest):
+            en_title = req.eN_Title or ""
+            vn_title = req.vN_title or ""
+            problem = req.problem or ""
+            context_val = req.context or ""
+            content_section = req.content or ""
+            description = req.description or ""
+            objectives = req.objectives or ""
+            body_semester_id = req.semesterId
+            category_id = req.categoryId
+        else:
+            # Legacy TopicRequest mapping
+            en_title = req.title or ""
+            vn_title = ""
+            problem = ""
+            context_val = ""
+            content_section = ""
+            description = (req.description or "")
+            objectives = (req.objectives or "")
+            body_semester_id = getattr(req, 'semester_id', None)
+            category_id = getattr(req, 'category_id', None)
+
         # Build combined content exactly like indexing logic (same field order)
         combined_description = " ".join([
-            str(part) for part in [
-                req.eN_Title,
-                req.vN_title,
-                req.problem,
-                req.context,
-                req.content,
-                req.description,
-                req.objectives,
+            part for part in [
+                en_title,
+                vn_title,
+                problem,
+                context_val,
+                content_section,
+                description,
+                objectives,
             ] if part
         ])
         # Determine semesters to search (current or provided + last_n_semesters)
@@ -92,7 +115,7 @@ async def check_duplicate_advanced(
         db: Session = next(db_gen)
         try:
             # Prefer explicit query param; fallback to body.semesterId; else detect current
-            base_semester_id = semester_id if semester_id is not None else req.semesterId
+            base_semester_id = semester_id if semester_id is not None else body_semester_id
             if base_semester_id is None:
                 now = datetime.utcnow()
                 current = db.query(Semester).filter(
@@ -118,8 +141,8 @@ async def check_duplicate_advanced(
 
         where = {"semesterId": {"$in": semester_ids}} if semester_ids else None
         detection_input = {
-            # Pass content via description only to avoid agent-side recombination mismatches
-            "topic_title": "",
+            # Use title for better matching and pass combined content in description
+            "topic_title": (en_title or vn_title or ""),
             "topic_description": combined_description,
             "topic_objectives": "",
             "topic_methodology": "",
