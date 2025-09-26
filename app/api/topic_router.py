@@ -180,8 +180,22 @@ async def check_duplicate_advanced(
 
         # If duplicate or potential duplicate -> propose modifications
         if status in ("duplicate_found", "potential_duplicate"):
+            # Normalize the original topic to new schema format
+            normalized_original_topic = {
+                "title": en_title,
+                "description": description,
+                "objectives": objectives,
+                "problem": problem,
+                "context": context_val,
+                "content": content_section,
+                "supervisor_id": getattr(req, 'supervisor_id', None) or getattr(req, 'supervisorId', None) or 1,
+                "semester_id": body_semester_id or 1,
+                "category_id": category_id or 0,
+                "max_students": getattr(req, 'max_students', 1)
+            }
+            
             modification_input = {
-                "original_topic": req.dict(),
+                "original_topic": normalized_original_topic,
                 "duplicate_results": dup_data,
                 "modification_preferences": {},
                 "preserve_core_idea": True,

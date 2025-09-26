@@ -10,7 +10,7 @@ class DuplicateDetectionAgent(BaseAgent):
     """Agent responsible for detecting duplicate topics using ChromaDB and cosine similarity."""
     
     def __init__(self):
-        super().__init__("DuplicateDetectionAgent", "gemini-1.5-flash")
+        super().__init__("DuplicateDetectionAgent", "gemini-2.0-flash")
         self.chroma_service = ChromaService()
         self.similarity_threshold = config.SIMILARITY_THRESHOLD
     
@@ -55,14 +55,14 @@ class DuplicateDetectionAgent(BaseAgent):
                 where=where_filter
             )
             # Fallback: if no results with where filter, try again without where
-            if not similar_topics and where_filter:
-                self.log_info("[dup] No candidates with where filter; retrying without filter")
-                similar_topics = self.chroma_service.search_similar_topics(
-                    query_content=full_content,
-                    n_results=3,
-                    similarity_threshold=0.8,
-                    where=None
-                )
+            # if not similar_topics and where_filter:
+            #     self.log_info("[dup] No candidates with where filter; retrying without filter")
+            #     similar_topics = self.chroma_service.search_similar_topics(
+            #         query_content=full_content,
+            #         n_results=3,
+            #         similarity_threshold=0.8,
+            #         where=None
+            #     )
             
             # Filter out excluded topic if provided
             if exclude_topic_id:

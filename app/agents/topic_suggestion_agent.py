@@ -12,7 +12,7 @@ class TopicSuggestionAgent(BaseAgent):
     """Agent responsible for suggesting topic ideas based on trending research areas."""
     
     def __init__(self):
-        super().__init__("TopicSuggestionAgent", "gemini-1.5-flash")
+        super().__init__("TopicSuggestionAgent", "gemini-2.0-flash")
     
     async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process request to generate topic suggestions.
@@ -260,15 +260,16 @@ Bạn là một chuyên gia tư vấn đề tài nghiên cứu. Hãy đề xuấ
 5. Công nghệ, phạm vi và độ khó phù hợp với đồ án tốt nghiệp CNTT
 6. Phân công vai trò rõ ràng cho {team_size} thành viên và kế hoạch công việc 14 tuần
 
-Hãy trả về kết quả trong format JSON như sau:
+Hãy trả về kết quả trong format JSON hợp lệ như sau:
 {{
   "suggestions": [
     {{
       "title": "Tên đề tài cụ thể",
       "description": "Mô tả chi tiết về đề tài",
       "objectives": "Mục tiêu cụ thể của đề tài",
-      "methodology": "Phương pháp thực hiện đề xuất",
-      "expected_outcomes": "Kết quả mong đợi",
+      "problem": "Vấn đề cần giải quyết (BẮT BUỘC có nội dung)",
+      "context": "Bối cảnh nghiên cứu (BẮT BUỘC có nội dung)",
+      "content": "Nội dung chính của nghiên cứu (BẮT BUỘC có nội dung)",
       "category": "Danh mục/lĩnh vực",
       "rationale": "Lý do tại sao đề tài này phù hợp với xu hướng hiện tại",
       "difficulty_level": "Mức độ khó phù hợp với kỳ cuối (ví dụ: Advanced)",
@@ -279,7 +280,11 @@ Hãy trả về kết quả trong format JSON như sau:
   ]
 }}
 
-Đảm bảo các đề tài đa dạng và bao phủ các xu hướng khác nhau.
+QUAN TRỌNG:
+- Đảm bảo JSON hợp lệ với dấu phẩy đúng vị trí
+- Không có dấu phẩy thừa ở cuối object/array
+- Tất cả string phải được bao quanh bởi dấu ngoặc kép
+- Đảm bảo các đề tài đa dạng và bao phủ các xu hướng khác nhau
 """
         return prompt
     
@@ -297,6 +302,10 @@ Hãy trả về kết quả trong format JSON như sau:
                 raise ValueError("No JSON found in response")
             
             json_text = response_text[json_start:json_end]
+            
+            # Try to fix common JSON issues
+            json_text = self._fix_json_formatting(json_text)
+            
             data = json.loads(json_text)
             
             suggestions = []
@@ -309,8 +318,9 @@ Hãy trả về kết quả trong format JSON như sau:
                     title=item.get("title", ""),
                     description=item.get("description", ""),
                     objectives=item.get("objectives", ""),
-                    methodology=item.get("methodology", ""),
-                    expected_outcomes=item.get("expected_outcomes", ""),
+                    problem=item.get("problem", "") or f"Vấn đề cần giải quyết trong nghiên cứu {item.get('title', 'này')}",
+                    context=item.get("context", "") or f"Bối cảnh nghiên cứu liên quan đến {item.get('title', 'đề tài này')}",
+                    content=item.get("content", "") or f"Nội dung chính của nghiên cứu {item.get('title', 'này')}",
                     category=item.get("category", ""),
                     rationale=item.get("rationale", ""),
                     difficulty_level=item.get("difficulty_level", "Advanced"),
@@ -322,6 +332,11 @@ Hãy trả về kết quả trong format JSON như sau:
             
             return suggestions
             
+        except json.JSONDecodeError as e:
+            self.log_error(f"JSON parsing error: {e}", e)
+            self.log_info(f"Problematic JSON text: {json_text[:500]}...")
+            # Return fallback suggestions
+            return self._get_fallback_suggestions(team_size)
         except Exception as e:
             self.log_error("Error parsing AI suggestions", e)
             # Return fallback suggestions
@@ -335,8 +350,9 @@ Hãy trả về kết quả trong format JSON như sau:
                 title="Hệ thống nhận diện đối tượng thời gian thực sử dụng Deep Learning",
                 description="Xây dựng ứng dụng nhận diện và theo dõi đối tượng trong video thời gian thực",
                 objectives="Nghiên cứu và triển khai thuật toán deep learning cho nhận diện đối tượng",
-                methodology="Sử dụng YOLO hoặc R-CNN, training trên dataset tùy chỉnh",
-                expected_outcomes="Ứng dụng demo có thể nhận diện đối tượng với độ chính xác > 85%",
+                problem="Cần giải quyết vấn đề nhận diện và theo dõi đối tượng trong video thời gian thực với độ chính xác cao",
+                context="Trong bối cảnh phát triển AI và Computer Vision, việc nhận diện đối tượng thời gian thực trở nên quan trọng cho nhiều ứng dụng",
+                content="Nghiên cứu và phát triển hệ thống nhận diện đối tượng sử dụng deep learning với khả năng xử lý video thời gian thực",
                 category="Artificial Intelligence",
                 rationale="AI và Computer Vision đang rất hot trong xu hướng nghiên cứu hiện tại",
                 difficulty_level="Advanced",
@@ -348,8 +364,9 @@ Hãy trả về kết quả trong format JSON như sau:
                 title="Ứng dụng IoT giám sát môi trường thông minh",
                 description="Phát triển hệ thống sensor network giám sát chất lượng không khí và môi trường",
                 objectives="Tạo hệ thống IoT thu thập và phân tích dữ liệu môi trường",
-                methodology="Arduino/Raspberry Pi, cảm biến môi trường, cloud computing",
-                expected_outcomes="Dashboard theo dõi và cảnh báo chất lượng môi trường real-time",
+                problem="Cần giải quyết vấn đề giám sát chất lượng môi trường liên tục và cảnh báo kịp thời",
+                context="Trong bối cảnh biến đổi khí hậu và ô nhiễm môi trường, việc giám sát chất lượng môi trường trở nên cấp thiết",
+                content="Nghiên cứu và phát triển hệ thống IoT giám sát môi trường với khả năng thu thập, phân tích và cảnh báo dữ liệu thời gian thực",
                 category="Internet of Things",
                 rationale="IoT cho smart cities là xu hướng quan trọng hiện nay",
                 difficulty_level="Advanced",
@@ -392,4 +409,43 @@ Hãy trả về kết quả trong format JSON như sau:
             if len(keywords) >= 10:
                 break
         return keywords
+
+    def _fix_json_formatting(self, json_text: str) -> str:
+        """Fix common JSON formatting issues from AI responses."""
+        try:
+            # Remove any trailing commas before closing braces/brackets
+            import re
+            json_text = re.sub(r',(\s*[}\]])', r'\1', json_text)
+            
+            # Fix missing commas between object properties
+            json_text = re.sub(r'"\s*\n\s*"', '",\n"', json_text)
+            
+            # Fix missing quotes around keys
+            json_text = re.sub(r'(\w+):', r'"\1":', json_text)
+            
+            # Remove any control characters that might break JSON
+            json_text = ''.join(char for char in json_text if ord(char) >= 32 or char in '\n\r\t')
+            
+            # Try to fix unescaped quotes in string values
+            # This is a simple approach - might need more sophisticated handling
+            lines = json_text.split('\n')
+            fixed_lines = []
+            for line in lines:
+                # If line contains unescaped quotes in string values, try to fix them
+                if ':' in line and '"' in line:
+                    # Simple heuristic: if there are odd number of quotes, try to balance them
+                    quote_count = line.count('"')
+                    if quote_count % 2 == 1:
+                        # Try to add a closing quote at the end of the line
+                        if not line.strip().endswith('"') and not line.strip().endswith(','):
+                            line = line.rstrip() + '"'
+                fixed_lines.append(line)
+            
+            json_text = '\n'.join(fixed_lines)
+            
+            return json_text
+            
+        except Exception as e:
+            self.log_error("Error fixing JSON formatting", e)
+            return json_text
 

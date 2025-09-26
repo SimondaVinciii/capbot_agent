@@ -11,7 +11,7 @@ class CheckRubricAgent(BaseAgent):
     """Agent responsible for rubric-based evaluation of a topic proposal."""
 
     def __init__(self):
-        super().__init__("CheckRubricAgent", "gemini-1.5-flash")
+        super().__init__("CheckRubricAgent", "gemini-2.0-flash")
         # Define rubric criteria and default equal weights
         self.criteria = [
             {
