@@ -148,20 +148,20 @@ class TopicRequest(BaseModel):
         description="Learning and research objectives",
         example="Nghiên cứu và triển khai AI trong quản lý thư viện, tự động hóa quy trình mượn trả sách, và phát triển hệ thống gợi ý sách thông minh"
     )
-    methodology: Optional[str] = Field(
+    problem: Optional[str] = Field(
         None, 
-        description="Research methodology and technical approach",
-        example="Machine Learning, Computer Vision, IoT sensors, Web Development, Database Design"
+        description="Problem statement and research question",
+        example="Cần giải quyết vấn đề quản lý thư viện thủ công, thiếu tự động hóa và khả năng gợi ý sách cá nhân hóa"
     )
-    expected_outcomes: Optional[str] = Field(
+    context: Optional[str] = Field(
         None, 
-        description="Expected deliverables and outcomes",
-        example="Hoàn thiện hệ thống quản lý thư viện thông minh với khả năng nhận diện sách tự động, gợi ý sách cá nhân hóa, và báo cáo thống kê chi tiết"
+        description="Research context and background",
+        example="Trong bối cảnh phát triển công nghệ AI và IoT, việc ứng dụng vào quản lý thư viện trở nên cần thiết để nâng cao hiệu quả và trải nghiệm người dùng"
     )
-    requirements: Optional[str] = Field(
+    content: Optional[str] = Field(
         None, 
-        description="Technical requirements and prerequisites",
-        example="Python, TensorFlow, OpenCV, IoT sensors, Web technologies (HTML, CSS, JavaScript), Database (SQL Server/MySQL)"
+        description="Main research content and scope",
+        example="Nghiên cứu và phát triển hệ thống quản lý thư viện thông minh sử dụng AI để nhận diện sách, gợi ý cá nhân hóa và IoT để theo dõi tài sản"
     )
     category_id: Optional[int] = Field(
         None, 
@@ -293,15 +293,20 @@ class TopicSuggestion(BaseModel):
         description="Learning and research objectives",
         example="Create personalized learning paths, implement adaptive assessment, improve learning outcomes through AI-driven insights"
     )
-    methodology: str = Field(
+    problem: str = Field(
         ..., 
-        description="Suggested research methodology",
-        example="Machine Learning, Natural Language Processing, Educational Data Mining, User Experience Design"
+        description="Problem statement and research question",
+        example="Cần giải quyết vấn đề cá nhân hóa học tập cho từng sinh viên với nhu cầu và khả năng khác nhau"
     )
-    expected_outcomes: str = Field(
+    context: str = Field(
         ..., 
-        description="Expected deliverables and outcomes",
-        example="A fully functional personalized learning platform with AI recommendations, detailed analytics dashboard, and research paper on adaptive learning"
+        description="Research context and background",
+        example="Trong bối cảnh giáo dục hiện đại, việc cá nhân hóa học tập trở nên quan trọng để nâng cao hiệu quả giáo dục"
+    )
+    content: str = Field(
+        ..., 
+        description="Main research content and scope",
+        example="Nghiên cứu và phát triển hệ thống học tập thông minh sử dụng AI để phân tích nhu cầu học tập và đề xuất nội dung phù hợp"
     )
     category: str = Field(
         ..., 
@@ -342,15 +347,16 @@ class TopicSuggestionsResponse(BaseModel):
         description="List of topic suggestions",
         example=[
             {
-                "title": "AI-Powered Personalized Learning System",
-                "description": "Develop an intelligent learning platform that adapts to individual student needs using machine learning algorithms",
-                "objectives": "Create personalized learning paths, implement adaptive assessment, and improve learning outcomes",
-                "methodology": "Machine Learning, Natural Language Processing, Educational Data Mining",
-                "expected_outcomes": "A fully functional personalized learning platform with AI recommendations",
-                "category": "Artificial Intelligence in Education",
-                "rationale": "Trending in educational technology with high research potential",
-                "difficulty_level": "Advanced",
-                "estimated_duration": "6 months"
+                 "title": "AI-Powered Personalized Learning System",
+                 "description": "Develop an intelligent learning platform that adapts to individual student needs using machine learning algorithms",
+                 "objectives": "Create personalized learning paths, implement adaptive assessment, and improve learning outcomes",
+                 "problem": "Cần giải quyết vấn đề cá nhân hóa học tập cho từng sinh viên với nhu cầu và khả năng khác nhau",
+                 "context": "Trong bối cảnh giáo dục hiện đại, việc cá nhân hóa học tập trở nên quan trọng để nâng cao hiệu quả giáo dục",
+                 "content": "Nghiên cứu và phát triển hệ thống học tập thông minh sử dụng AI để phân tích nhu cầu học tập và đề xuất nội dung phù hợp",
+                 "category": "Artificial Intelligence in Education",
+                 "rationale": "Trending in educational technology with high research potential",
+                 "difficulty_level": "Advanced",
+                 "estimated_duration": "6 months"
             }
         ]
     )
@@ -396,7 +402,9 @@ class TopicModificationResponse(BaseModel):
             "title": "AI-Powered Smart Library Management System with IoT Integration",
             "description": "Develop an intelligent library management system using AI and IoT sensors for real-time book tracking and user behavior analysis",
             "objectives": "Implement AI-driven book recommendations, IoT-based inventory management, and predictive analytics for library operations",
-            "methodology": "Machine Learning, IoT sensors, Computer Vision, Data Analytics"
+            "problem": "Traditional library management lacks automation and personalized recommendations",
+            "context": "Modern libraries need intelligent systems to handle increasing collections and user demands",
+            "content": "Research and develop AI-powered library management with IoT integration for real-time tracking and user analytics"
         }
     )
     modifications_made: List[str] = Field(

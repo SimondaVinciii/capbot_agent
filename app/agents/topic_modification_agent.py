@@ -12,7 +12,7 @@ class TopicModificationAgent(BaseAgent):
     """Agent responsible for suggesting topic modifications when duplicates are detected."""
     
     def __init__(self):
-        super().__init__("TopicModificationAgent", "gemini-1.5-flash")
+        super().__init__("TopicModificationAgent", "gemini-2.0-flash")
     
     async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process request to modify topic based on duplicate detection results.
@@ -193,19 +193,20 @@ Các đề tài tương tự:
 4. Giữ nguyên các thông tin cơ bản (supervisor_id, semester_id, category_id, max_students)
 
 ## HƯỚNG DẪN CHỈNH SỬA:
-- Điều chỉnh eN_Title (title) để rõ ràng và khác biệt
-- Làm rõ problem, context và content theo hướng khác biệt
-- Tinh chỉnh objectives và description để nhấn mạnh điểm mới
-- Không thay đổi supervisor_id, semester_id, category_id, max_students
+        - Điều chỉnh title để rõ ràng và khác biệt
+        - Làm rõ problem, context và content theo hướng khác biệt
+        - Tinh chỉnh objectives và description để nhấn mạnh điểm mới
+        - Không thêm các trường cũ: methodology, expected_outcomes, requirements
+        - Không thay đổi supervisor_id, semester_id, category_id, max_students
 
-Trả về kết quả trong format JSON (ưu tiên trường mới). Nếu một trường không thay đổi, copy từ dữ liệu gốc. Các *id phải là số nguyên.
+Trả về kết quả trong format JSON. BẮT BUỘC chỉ sử dụng các trường sau, KHÔNG được thêm trường khác:
 {{
   "title": "Tiêu đề EN đã chỉnh sửa",
   "description": "Mô tả đã chỉnh sửa", 
   "objectives": "Mục tiêu đã chỉnh sửa",
-  "problem": "(tuỳ chọn) Bản chỉnh sửa của problem",
-  "context": "(tuỳ chọn) Bản chỉnh sửa của context",
-  "content": "(tuỳ chọn) Bản chỉnh sửa của content",
+  "problem": "Vấn đề cần giải quyết (BẮT BUỘC có nội dung)",
+  "context": "Bối cảnh nghiên cứu (BẮT BUỘC có nội dung)",
+  "content": "Nội dung chính của nghiên cứu (BẮT BUỘC có nội dung)",
   "supervisor_id": {original_topic.get('supervisor_id') or original_topic.get('supervisorId') or 1},
   "semester_id": {original_topic.get('semester_id') or original_topic.get('semesterId') or 1},
   "category_id": {original_topic.get('category_id') or original_topic.get('categoryId') or 0},
@@ -216,7 +217,11 @@ Trả về kết quả trong format JSON (ưu tiên trường mới). Nếu mộ
   "rationale": "Giải thích chi tiết về lý do và cách thức chỉnh sửa"
 }}
 
-Đảm bảo JSON hợp lệ và đầy đủ thông tin. Trả lời hoàn toàn bằng tiếng Việt.
+QUAN TRỌNG: 
+- KHÔNG được thêm methodology, expected_outcomes, requirements
+- BẮT BUỘC phải có problem, context, content với nội dung cụ thể
+- Các *id phải là số nguyên
+- Trả lời hoàn toàn bằng tiếng Việt
 """
         return prompt
     
@@ -264,15 +269,43 @@ Trả về kết quả trong format JSON (ưu tiên trường mới). Nếu mộ
                         except Exception:
                             pass
             
-            # Remove deprecated fields and ensure new vector fields exist
-            for drop_key in ["methodology", "expected_outcomes", "requirements"]:
+            # Aggressively remove ALL deprecated fields - be very thorough
+            deprecated_fields = [
+                "methodology", "expected_outcomes", "requirements", 
+                "expectedOutcomes", "methodology", "requirements",
+                "methodology", "expected_outcomes", "requirements"
+            ]
+            for drop_key in deprecated_fields:
                 if drop_key in modified_data:
                     modified_data.pop(drop_key, None)
+            
+            # Also remove any fields that contain these keywords
+            keys_to_remove = []
+            for key in modified_data.keys():
+                if any(dep in key.lower() for dep in ["methodology", "expected", "requirements"]):
+                    keys_to_remove.append(key)
+            for key in keys_to_remove:
+                modified_data.pop(key, None)
 
+            # Ensure new vector fields exist with proper content - these are REQUIRED
             for new_key in ["problem", "context", "content"]:
-                if new_key not in modified_data:
-                    modified_data[new_key] = original_topic.get(new_key, "")
+                if new_key not in modified_data or not modified_data.get(new_key):
+                    # Generate meaningful content for new fields if missing
+                    if new_key == "problem":
+                        modified_data[new_key] = f"Vấn đề cần giải quyết trong nghiên cứu {modified_data.get('title', 'này')}: {modified_data.get('description', '')[:100]}..."
+                    elif new_key == "context":
+                        modified_data[new_key] = f"Bối cảnh nghiên cứu liên quan đến {modified_data.get('title', 'đề tài này')}: {modified_data.get('description', '')[:100]}..."
+                    elif new_key == "content":
+                        modified_data[new_key] = f"Nội dung chính của nghiên cứu {modified_data.get('title', 'này')}: {modified_data.get('description', '')[:100]}..."
+                    else:
+                        modified_data[new_key] = original_topic.get(new_key, "")
 
+            # Final cleanup - remove any remaining deprecated fields
+            final_cleanup_fields = ["methodology", "expected_outcomes", "requirements", "expectedOutcomes"]
+            for field in final_cleanup_fields:
+                if field in modified_data:
+                    modified_data.pop(field, None)
+            
             # Ensure modifications_made and rationale are present
             if 'modifications_made' not in modified_data:
                 modified_data['modifications_made'] = ["Đã thực hiện các điều chỉnh để giảm trùng lặp"]
@@ -305,6 +338,21 @@ Trả về kết quả trong format JSON (ưu tiên trường mới). Nếu mộ
                         or original_topic.get("vN_title")
                         or ""
                     )
+                else:
+                    normalized[key] = original_topic.get(key, "")
+
+        # Ensure new vector fields are present and meaningful
+        for key in ["problem", "context", "content"]:
+            if not normalized.get(key):
+                # Generate meaningful content based on title and description
+                title = normalized.get("title", "")
+                description = normalized.get("description", "")
+                if key == "problem":
+                    normalized[key] = f"Vấn đề cần giải quyết trong nghiên cứu {title}: {description[:100]}..."
+                elif key == "context":
+                    normalized[key] = f"Bối cảnh nghiên cứu liên quan đến {title}: {description[:100]}..."
+                elif key == "content":
+                    normalized[key] = f"Nội dung chính của nghiên cứu {title}: {description[:100]}..."
                 else:
                     normalized[key] = original_topic.get(key, "")
 
@@ -343,6 +391,12 @@ Trả về kết quả trong format JSON (ưu tiên trường mới). Nếu mộ
             default=1
         )
 
+        # Final cleanup - remove any deprecated fields that might have slipped through
+        deprecated_fields = ["methodology", "expected_outcomes", "requirements", "expectedOutcomes"]
+        for field in deprecated_fields:
+            if field in normalized:
+                normalized.pop(field, None)
+
         # Ensure arrays/strings present
         if not normalized.get("modifications_made"):
             normalized["modifications_made"] = modified_topic.get("modifications_made", [
@@ -379,9 +433,9 @@ Trả về kết quả trong format JSON (ưu tiên trường mới). Nếu mộ
             "title": modified_title,
             "description": original_topic.get('description', ''),
             "objectives": modified_objectives,
-            "problem": original_topic.get('problem', ''),
-            "context": original_topic.get('context', ''),
-            "content": original_topic.get('content', ''),
+            "problem": original_topic.get('problem', '') or f"Vấn đề cần giải quyết trong nghiên cứu {modified_title}",
+            "context": original_topic.get('context', '') or f"Bối cảnh nghiên cứu liên quan đến {modified_title}",
+            "content": original_topic.get('content', '') or f"Nội dung chính của nghiên cứu {modified_title}",
             "supervisor_id": original_topic.get('supervisor_id') or original_topic.get('supervisorId') or 1,
             "semester_id": original_topic.get('semester_id') or original_topic.get('semesterId') or 1,
             "category_id": original_topic.get('category_id') or original_topic.get('categoryId') or 0,

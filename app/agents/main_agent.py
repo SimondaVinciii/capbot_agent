@@ -18,7 +18,7 @@ class MainAgent(BaseAgent):
     """Main orchestrating agent that coordinates all sub-agents for topic submission support."""
     
     def __init__(self):
-        super().__init__("MainAgent", "gemini-1.5-flash")
+        super().__init__("MainAgent", "gemini-2.0-flash")
         
         # Initialize sub-agents
         self.suggestion_agent = TopicSuggestionAgent()

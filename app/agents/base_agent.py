@@ -12,7 +12,7 @@ genai.configure(api_key=config.GOOGLE_API_KEY)
 class BaseAgent(ABC):
     """Abstract base class for all AI agents."""
     
-    def __init__(self, name: str, model_name: str = "gemini-1.5-flash"):
+    def __init__(self, name: str, model_name: str = "gemini-2.0-flash"):
         """Initialize the base agent.
         
         Args:
