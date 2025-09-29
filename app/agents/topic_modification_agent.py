@@ -47,6 +47,11 @@ class TopicModificationAgent(BaseAgent):
             )
             # Normalize and backfill required fields for TopicRequest
             modified_topic = self._normalize_modified_topic(modified_topic, original_topic)
+            # Ensure eN_Title and abbreviation exist
+            if not modified_topic.get("eN_Title"):
+                modified_topic["eN_Title"] = modified_topic.get("title") or original_topic.get("title") or ""
+            if not modified_topic.get("abbreviation"):
+                modified_topic["abbreviation"] = self._generate_abbreviation(modified_topic.get("title") or "")
             
             # Calculate expected similarity improvement
             similarity_improvement = self._estimate_similarity_improvement(
@@ -66,7 +71,7 @@ class TopicModificationAgent(BaseAgent):
             
             return AgentResult(
                 success=True,
-                data=response.dict(),
+                data=response.dict(by_alias=True),
                 metadata={
                     "strategy_used": modification_strategy,
                     "similarity_improvement": similarity_improvement
@@ -191,6 +196,7 @@ Các đề tài tương tự:
 2. Đảm bảo tính khả thi và phù hợp với cấp độ sinh viên
 3. Tạo sự khác biệt rõ ràng với các đề tài tương tự
 4. Giữ nguyên các thông tin cơ bản (supervisor_id, semester_id, category_id, max_students)
+5. Bổ sung tiêu đề tiếng Anh (eN_Title) và tên viết tắt (abbreviation) dựa trên eN_Title
 
 ## HƯỚNG DẪN CHỈNH SỬA:
         - Điều chỉnh title để rõ ràng và khác biệt
@@ -198,9 +204,13 @@ Các đề tài tương tự:
         - Tinh chỉnh objectives và description để nhấn mạnh điểm mới
         - Không thêm các trường cũ: methodology, expected_outcomes, requirements
         - Không thay đổi supervisor_id, semester_id, category_id, max_students
+        - eN_Title: viết bằng tiếng Anh tự nhiên, tương ứng với title
+        - abbreviation: viết tắt in HOA, ghép chữ cái đầu các từ chính trong eN_Title (3-10 ký tự, không khoảng trắng)
 
 Trả về kết quả trong format JSON. BẮT BUỘC chỉ sử dụng các trường sau, KHÔNG được thêm trường khác:
 {{
+  "eN_Title": "English title of the topic",
+  "abbreviation": "ACRONYM from eN_Title (3-10 uppercase letters)",
   "title": "Tiêu đề EN đã chỉnh sửa",
   "description": "Mô tả đã chỉnh sửa", 
   "objectives": "Mục tiêu đã chỉnh sửa",
@@ -222,6 +232,7 @@ QUAN TRỌNG:
 - BẮT BUỘC phải có problem, context, content với nội dung cụ thể
 - Các *id phải là số nguyên
 - Trả lời hoàn toàn bằng tiếng Việt
+ - eN_Title phải là tiếng Anh; abbreviation là viết tắt từ eN_Title viết HOA không khoảng trắng
 """
         return prompt
     
@@ -431,6 +442,8 @@ QUAN TRỌNG:
         
         return {
             "title": modified_title,
+            "eN_Title": modified_title,
+            "abbreviation": self._generate_abbreviation(modified_title),
             "description": original_topic.get('description', ''),
             "objectives": modified_objectives,
             "problem": original_topic.get('problem', '') or f"Vấn đề cần giải quyết trong nghiên cứu {modified_title}",
@@ -479,6 +492,16 @@ QUAN TRỌNG:
         )
         
         return round(total_improvement, 3)
+
+    def _generate_abbreviation(self, title: str) -> str:
+        try:
+            import re
+            words = re.findall(r"[A-Za-zÀ-Ỹà-ỹ0-9]+", title)
+            letters = [w[0].upper() for w in words if w]
+            abbr = "".join(letters)[:10]
+            return abbr or "ABBR"
+        except Exception:
+            return "ABBR"
     
     async def suggest_alternative_approaches(self, topic_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Suggest alternative approaches for a topic to avoid duplicates."""
