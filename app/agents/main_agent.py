@@ -287,6 +287,8 @@ class MainAgent(BaseAgent):
                 topic_response = TopicResponse(
                     id=topic.Id,
                     title=topic.Title,
+                    eN_Title=topic.Title,
+                    abbreviation=getattr(topic, "Abbreviation", None),
                     description=topic.Description,
                     objectives=topic.Objectives,
                     supervisor_id=topic.SupervisorId,
@@ -301,7 +303,7 @@ class MainAgent(BaseAgent):
                     "success": True,
                     "data": {
                         "topic_id": topic.Id,
-                        "topic": topic_response.dict()
+                        "topic": topic_response.dict(by_alias=True)
                     }
                 }
                 

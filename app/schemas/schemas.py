@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -132,6 +132,16 @@ class SubmissionResubmitResponse(BaseModel):
 
 class TopicRequest(BaseModel):
     """Schema for topic submission request."""
+    eN_Title: Optional[str] = Field(
+        None,
+        description="English title duplicate for systems expecting EN_Title",
+        example="AI-Powered Library Management System"
+    )
+    abbreviation: Optional[str] = Field(
+        None,
+        description="Short abbreviation derived from the title",
+        example="APLMS"
+    )
     title: str = Field(
         ..., 
         max_length=500, 
@@ -164,25 +174,31 @@ class TopicRequest(BaseModel):
         example="Nghiên cứu và phát triển hệ thống quản lý thư viện thông minh sử dụng AI để nhận diện sách, gợi ý cá nhân hóa và IoT để theo dõi tài sản"
     )
     category_id: Optional[int] = Field(
-        None, 
+        None,
         description="Topic category ID",
-        example=2
+        example=2,
+        alias="categoryId",
     )
     supervisor_id: int = Field(
-        ..., 
+        ...,
         description="Supervisor user ID",
-        example=1
+        example=1,
+        alias="supervisorId",
     )
     semester_id: int = Field(
-        ..., 
+        ...,
         description="Semester ID",
-        example=1
+        example=1,
+        alias="semesterId",
     )
     max_students: int = Field(
         default=1, 
         description="Maximum number of students",
         example=2
     )
+
+    # Pydantic v2 config: allow population by field name when aliases exist
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class TopicVersionResponse(BaseModel):
@@ -209,19 +225,21 @@ class TopicResponse(BaseModel):
     """Schema for topic response."""
     id: int
     title: str
+    eN_Title: str
+    abbreviation: Optional[str]
     description: Optional[str]
     objectives: Optional[str]
-    supervisor_id: int
-    category_id: Optional[int]
-    semester_id: int
+    supervisor_id: int = Field(alias="supervisorId")
+    category_id: Optional[int] = Field(alias="categoryId")
+    semester_id: int = Field(alias="semesterId")
     max_students: int
     is_approved: bool
     created_at: datetime
     latest_version: Optional[TopicVersionResponse] = None
     approved_version: Optional[TopicVersionResponse] = None
 
-    class Config:
-        from_attributes = True
+    # Pydantic v2 config
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class DuplicateCheckResult(BaseModel):

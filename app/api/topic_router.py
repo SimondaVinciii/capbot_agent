@@ -37,7 +37,8 @@ modification_agent = TopicModificationAgent()
 rubric_agent = CheckRubricAgent()
 
 class DuplicateAdvancedRequest(BaseModel):
-    eN_Title: str = Field(..., description="English title")
+    eN_Title: Optional[str] = Field(None, description="English title")
+    title: Optional[str] = Field(None, description="Alias for English title")
     abbreviation: Optional[str] = None
     vN_title: Optional[str] = None
     problem: Optional[str] = None
@@ -73,7 +74,7 @@ async def check_duplicate_advanced(
         t0 = time.time()
         # Normalize request to new schema regardless of legacy/new input
         if isinstance(req, DuplicateAdvancedRequest):
-            en_title = req.eN_Title or ""
+            en_title = (req.eN_Title or req.title or "")
             vn_title = req.vN_title or ""
             problem = req.problem or ""
             context_val = req.context or ""
