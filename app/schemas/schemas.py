@@ -358,6 +358,80 @@ class TopicSuggestion(BaseModel):
     )
 
 
+class TopicSuggestionV2(BaseModel):
+    """Schema for topic suggestions v2 with additional fields."""
+    eN_Title: str = Field(
+        ..., 
+        description="English title of the topic",
+        example="AI-Powered Personalized Learning System"
+    )
+    abbreviation: str = Field(
+        ..., 
+        description="Short abbreviation derived from the title",
+        example="APLS"
+    )
+    vN_title: str = Field(
+        ..., 
+        description="Vietnamese title of the topic",
+        example="Hệ thống học tập cá nhân hóa sử dụng AI"
+    )
+    problem: str = Field(
+        ..., 
+        description="Problem statement and research question",
+        example="Cần giải quyết vấn đề cá nhân hóa học tập cho từng sinh viên với nhu cầu và khả năng khác nhau"
+    )
+    context: str = Field(
+        ..., 
+        description="Research context and background",
+        example="Trong bối cảnh giáo dục hiện đại, việc cá nhân hóa học tập trở nên quan trọng để nâng cao hiệu quả giáo dục"
+    )
+    content: str = Field(
+        ..., 
+        description="Main research content and scope",
+        example="Nghiên cứu và phát triển hệ thống học tập thông minh sử dụng AI để phân tích nhu cầu học tập và đề xuất nội dung phù hợp"
+    )
+    description: str = Field(
+        ..., 
+        description="Detailed topic description",
+        example="Phát triển nền tảng học tập thông minh có khả năng thích ứng với nhu cầu cá nhân của từng sinh viên sử dụng thuật toán machine learning và xử lý ngôn ngữ tự nhiên"
+    )
+    objectives: str = Field(
+        ..., 
+        description="Learning and research objectives",
+        example="Tạo ra các lộ trình học tập cá nhân hóa, triển khai đánh giá thích ứng, cải thiện kết quả học tập thông qua các phân tích dựa trên AI"
+    )
+    category: str = Field(
+        ..., 
+        description="Suggested topic category",
+        example="Artificial Intelligence in Education"
+    )
+    rationale: str = Field(
+        ..., 
+        description="Why this topic is trending/relevant",
+        example="Đang là xu hướng trong công nghệ giáo dục với tiềm năng nghiên cứu cao và ứng dụng thực tế trong môi trường học tập hiện đại"
+    )
+    difficulty_level: str = Field(
+        default="Intermediate",
+        description="Difficulty level of the topic",
+        example="Advanced"
+    )
+    estimated_duration: str = Field(
+        default="14 weeks",
+        description="Estimated project duration",
+        example="14 weeks"
+    )
+    team_size: int = Field(
+        default=4,
+        description="Recommended team size (4 or 5)",
+        example=4
+    )
+    suggested_roles: List[str] = Field(
+        default_factory=list,
+        description="Suggested team roles for effective collaboration",
+        example=["Team Lead/PM", "Backend Developer", "Frontend Developer", "AI/ML Engineer"]
+    )
+
+
 class TopicSuggestionsResponse(BaseModel):
     """Schema for topic suggestions response."""
     suggestions: List[TopicSuggestion] = Field(
@@ -375,6 +449,54 @@ class TopicSuggestionsResponse(BaseModel):
                  "rationale": "Trending in educational technology with high research potential",
                  "difficulty_level": "Advanced",
                  "estimated_duration": "6 months"
+            }
+        ]
+    )
+    trending_areas: List[str] = Field(
+        ..., 
+        description="Current trending research areas",
+        example=["AI in Education", "Personalized Learning", "Adaptive Systems", "Educational Data Mining"]
+    )
+    generated_at: datetime = Field(
+        default_factory=datetime.now, 
+        description="When suggestions were generated",
+        example="2024-01-22T10:30:00Z"
+    )
+    trending_analysis: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Analysis of current trends",
+        example={
+            "hot_topics": ["AI in Education", "Personalized Learning", "Adaptive Systems"],
+            "research_gaps": ["Cross-cultural adaptation", "Accessibility features"],
+            "technology_trends": ["GPT integration", "Real-time analytics"]
+        }
+    )
+    processing_time: float = Field(
+        ..., 
+        description="Time taken to generate suggestions in seconds",
+        example=3.456
+    )
+
+
+class TopicSuggestionsV2Response(BaseModel):
+    """Schema for topic suggestions v2 response."""
+    suggestions: List[TopicSuggestionV2] = Field(
+        ..., 
+        description="List of topic suggestions v2",
+        example=[
+            {
+                 "eN_Title": "AI-Powered Personalized Learning System",
+                 "abbreviation": "APLS",
+                 "vN_title": "Hệ thống học tập cá nhân hóa sử dụng AI",
+                 "problem": "Cần giải quyết vấn đề cá nhân hóa học tập cho từng sinh viên với nhu cầu và khả năng khác nhau",
+                 "context": "Trong bối cảnh giáo dục hiện đại, việc cá nhân hóa học tập trở nên quan trọng để nâng cao hiệu quả giáo dục",
+                 "content": "Nghiên cứu và phát triển hệ thống học tập thông minh sử dụng AI để phân tích nhu cầu học tập và đề xuất nội dung phù hợp",
+                 "description": "Phát triển nền tảng học tập thông minh có khả năng thích ứng với nhu cầu cá nhân của từng sinh viên sử dụng thuật toán machine learning và xử lý ngôn ngữ tự nhiên",
+                 "objectives": "Tạo ra các lộ trình học tập cá nhân hóa, triển khai đánh giá thích ứng, cải thiện kết quả học tập thông qua các phân tích dựa trên AI",
+                 "category": "Artificial Intelligence in Education",
+                 "rationale": "Đang là xu hướng trong công nghệ giáo dục với tiềm năng nghiên cứu cao và ứng dụng thực tế trong môi trường học tập hiện đại",
+                 "difficulty_level": "Advanced",
+                 "estimated_duration": "14 weeks"
             }
         ]
     )
