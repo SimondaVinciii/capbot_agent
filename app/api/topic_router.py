@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, UploadFile
 from typing import List, Optional, Dict, Any, Union
 from app.schemas.schemas import (
     TopicRequest, TopicResponse, TopicVersionRequest, TopicVersionResponse,
-    DuplicateCheckResult, TopicSuggestionsResponse, TopicModificationResponse,
+    DuplicateCheckResult, TopicSuggestionsResponse, TopicSuggestionsV2Response, TopicModificationResponse,
     AgentProcessResponse, ErrorResponse
 )
 from pydantic import BaseModel, Field
@@ -12,6 +12,7 @@ from app.services.topic_service import TopicService
 from app.agents.duplicate_detection_agent import DuplicateDetectionAgent
 from app.agents.topic_modification_agent import TopicModificationAgent
 from app.agents.check_rubric_agent import CheckRubricAgent
+from app.agents.topic_suggestion_v2_agent import TopicSuggestionV2Agent
 from app.schemas.schemas import RubricEvaluationRequest, RubricEvaluationResponse
 import logging
 
@@ -35,6 +36,7 @@ topic_service = TopicService()
 duplicate_agent = DuplicateDetectionAgent()
 modification_agent = TopicModificationAgent()
 rubric_agent = CheckRubricAgent()
+suggestion_v2_agent = TopicSuggestionV2Agent()
 
 class DuplicateAdvancedRequest(BaseModel):
     eN_Title: Optional[str] = Field(None, description="English title")
@@ -561,6 +563,108 @@ async def get_trending_suggestions(
             
     except Exception as e:
         logger.error(f"Error in get_trending_suggestions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/suggestions-v2",
+    response_model=TopicSuggestionsV2Response,
+    summary="💡 Get Trending Topic Suggestions V2",
+    description="""
+    ## Get AI-powered topic suggestions v2 with additional fields
+    
+    ### 🤖 AI Features:
+    - Analyzes current research trends using semester data
+    - Generates topic suggestions with English/Vietnamese titles
+    - Includes abbreviation generation for each topic
+    - Customizes suggestions based on supervisor expertise
+    - Considers student level and category preferences
+    
+    ### 📊 Input Parameters:
+    - `semester_id`: Target semester for suggestions
+    - `category_preference`: Preferred topic category
+    - `keywords`: Keywords of interest for customization
+    - `supervisor_expertise`: Supervisor's expertise areas
+    - `student_level`: Student level (undergraduate/graduate)
+    - `team_size`: Team size (4 or 5 students)
+    
+    ### 📋 Response includes:
+    - Topic suggestions with eN_Title, abbreviation, vN_title
+    - Problem, context, content, description, objectives
+    - Trending areas analysis
+    - Processing time and metadata
+    """,
+    responses={
+        200: {
+            "description": "Topic suggestions v2 generated successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "suggestions": [
+                            {
+                                "eN_Title": "AI-Powered Personalized Learning System",
+                                "abbreviation": "APLS",
+                                "vN_title": "Hệ thống học tập cá nhân hóa sử dụng AI",
+                                "problem": "Cần giải quyết vấn đề cá nhân hóa học tập cho từng sinh viên với nhu cầu và khả năng khác nhau",
+                                "context": "Trong bối cảnh giáo dục hiện đại, việc cá nhân hóa học tập trở nên quan trọng để nâng cao hiệu quả giáo dục",
+                                "content": "Nghiên cứu và phát triển hệ thống học tập thông minh sử dụng AI để phân tích nhu cầu học tập và đề xuất nội dung phù hợp",
+                                "description": "Phát triển nền tảng học tập thông minh có khả năng thích ứng với nhu cầu cá nhân của từng sinh viên sử dụng thuật toán machine learning và xử lý ngôn ngữ tự nhiên",
+                                "objectives": "Tạo ra các lộ trình học tập cá nhân hóa, triển khai đánh giá thích ứng, cải thiện kết quả học tập thông qua các phân tích dựa trên AI",
+                                "category": "Artificial Intelligence in Education",
+                                "rationale": "Đang là xu hướng trong công nghệ giáo dục với tiềm năng nghiên cứu cao và ứng dụng thực tế trong môi trường học tập hiện đại",
+                                "difficulty_level": "Advanced",
+                                "estimated_duration": "14 weeks",
+                                "team_size": 4,
+                                "suggested_roles": ["Team Lead/PM", "Backend Developer", "Frontend Developer", "AI/ML Engineer"]
+                            }
+                        ],
+                        "trending_areas": ["AI in Education", "Personalized Learning", "Adaptive Systems"],
+                        "generated_at": "2024-01-22T10:30:00Z",
+                        "processing_time": 3.456
+                    }
+                }
+            }
+        }
+    }
+)
+async def get_trending_suggestions_v2(
+    semester_id: int = Query(..., description="Target semester ID for suggestions"),
+    category_preference: str = Query("", description="Preferred topic category (e.g., 'AI', 'Web Development')"),
+    keywords: List[str] = Query([], description="Keywords of interest for customization"),
+    supervisor_expertise: List[str] = Query([], description="Supervisor's expertise areas"),
+    student_level: str = Query("undergraduate", description="Student level (undergraduate/graduate)"),
+    team_size: int = Query(4, description="Team size (only 4 or 5 supported)")
+) -> TopicSuggestionsV2Response:
+    try:
+        logger.info(f"Getting trending suggestions v2 for semester: {semester_id}")
+        
+        # Enforce only 4 or 5
+        if team_size not in (4, 5):
+            team_size = 4
+        
+        # Prepare input data for the agent
+        input_data = {
+            "semester_id": semester_id,
+            "category_preference": category_preference,
+            "keywords": keywords,
+            "supervisor_expertise": supervisor_expertise,
+            "student_level": student_level,
+            "team_size": team_size
+        }
+        
+        # Process using the v2 agent
+        result = await suggestion_v2_agent.process(input_data)
+        
+        if result.get("success"):
+            return TopicSuggestionsV2Response(**result["data"])
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "Failed to get suggestions v2")
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in get_trending_suggestions_v2: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
