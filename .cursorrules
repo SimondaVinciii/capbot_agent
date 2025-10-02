@@ -1,5 +1,0 @@
-# Protect .NET API project (CapBot.API)
-- NEVER modify files under `CapBot_SP_Clone/CapBot.API/**`.
-- Read-only access for context only.
-- Do not create, rename, move, or delete any files in `CapBot_SP_Clone/CapBot.API/**`.
-- If a change is necessary in `CapBot_SP_Clone/CapBot.API/**`, STOP and ask for explicit approval.
