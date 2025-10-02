@@ -8,7 +8,7 @@ from app.services.topic_service import TopicService
 
 router = APIRouter(
     prefix="/api/v1/chroma",
-    tags=["🧠 Chroma Management"],
+    tags=["Chroma Management"],
     responses={
         400: {"description": "Bad request"},
         500: {"description": "Internal server error"}
@@ -47,7 +47,7 @@ class SearchResponseItem(BaseModel):
 
 @router.post(
     "/reset",
-    summary="🧹 Reset collection",
+    summary="Reset collection",
     description="Delete and recreate the Chroma collection."
 )
 def reset_collection():
@@ -59,7 +59,7 @@ def reset_collection():
 
 @router.get(
     "/collection",
-    summary="📚 View Chroma collection contents",
+    summary="View Chroma collection contents",
     description="List items in the Chroma collection with pagination and optional previews.",
 )
 def list_collection(
@@ -143,25 +143,11 @@ def list_collection(
 
 @router.post(
     "/index-approved-topics",
-    summary="📊 Index Approved Submissions",
+    summary="Index Approved Submissions",
     description="""
     ## Index based on approved Submissions (Status = 7)
     
-    ### 📊 What gets indexed:
-    - Select all `Submission` with `Status = 7` (Approved)
-    - If a submission has `TopicVersionId` (not null): index using fields from `TopicVersion`
-    - If `TopicVersionId` is null: index using fields from `Topic`
-    - Combines fields: Title, Description, Objectives, Methodology, ExpectedOutcomes, Requirements
-    - Document ID format:
-      - TopicVersion-based: {topic_id}_{version_id}
-      - Topic-based: {topic_id}
-    - Metadata includes: topic_id, optional version_id/version_number, semester_id, category_id, supervisor_id
     
-    ### 🔍 Use Cases:
-    - Initial system setup
-    - Refresh ChromaDB with latest approved content
-    - After database migrations or updates
-    - Performance optimization and re-indexing
     """,
     responses={
         200: {
@@ -338,7 +324,7 @@ async def index_approved_topics_from_db(
 
 @router.post(
     "/index-single",
-    summary="➕ Index a single document by submissionId",
+    summary="Index a single document by submissionId",
     description="""
     Index exactly one record into ChromaDB using a `submissionId`.
     

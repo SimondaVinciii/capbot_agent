@@ -25,32 +25,11 @@ topic_service = TopicService()
 
 @router.post(
     "/system/initialize",
-    summary="🚀 Initialize AI System",
+    summary=" Initialize AI System",
     description="""
     ## Initialize the AI Agent system
     
-    ### 🤖 System Initialization:
-    - Initializes ChromaDB with existing topics for similarity search
-    - Sets up AI agents and their dependencies
-    - Configures system statistics and monitoring
-    - Prepares vector database for duplicate detection
     
-    ### 📊 What gets initialized:
-    - **ChromaDB Collection**: Creates and populates vector database
-    - **AI Agents**: Initializes all 3 sub-agents (Suggestion, Duplicate, Modification)
-    - **Topic Indexing**: Indexes existing approved topics
-    - **System Statistics**: Sets up monitoring and performance tracking
-    
-    ### ⚙️ Background Processing:
-    - Runs initialization in background for better performance
-    - Returns immediately with status confirmation
-    - Check system stats to monitor initialization progress
-    
-    ### 🔍 Use Cases:
-    - First-time system setup
-    - After database migrations
-    - System recovery and maintenance
-    - Performance optimization
     """,
     responses={
         200: {
@@ -85,32 +64,11 @@ async def initialize_system(background_tasks: BackgroundTasks) -> Dict[str, str]
 
 @router.get(
     "/system/stats",
-    summary="📊 Get System Statistics",
+    summary=" Get System Statistics",
     description="""
     ## Get comprehensive system statistics and health information
     
-    ### 📊 Statistics Included:
-    - **Processing Statistics**: Total requests, success rate, error count
-    - **ChromaDB Collection Info**: Document count, collection size, health status
-    - **Agent Performance**: Individual agent statistics and status
-    - **System Health**: Overall system status and performance metrics
     
-    ### 🤖 Agent Statistics:
-    - **Main Agent**: Total requests, successful submissions, duplicates found, modifications made
-    - **Suggestion Agent**: Suggestions generated, success rate
-    - **Duplicate Agent**: Duplicate checks performed, similarity analysis
-    - **Modification Agent**: Modifications made, improvement scores
-    
-    ### 🗄️ Database Statistics:
-    - **ChromaDB**: Collection size, indexed documents, query performance
-    - **SQL Server**: Connection status, query statistics
-    - **Vector Search**: Similarity search performance, accuracy metrics
-    
-    ### 🔍 Use Cases:
-    - System monitoring and health checks
-    - Performance analysis and optimization
-    - Troubleshooting and diagnostics
-    - Capacity planning and scaling decisions
     """,
     responses={
         200: {
@@ -164,31 +122,9 @@ async def get_system_stats() -> Dict[str, Any]:
 
 @router.get(
     "/health",
-    summary="💚 Health Check",
+    summary="Health Check",
     description="""
     ## System health check endpoint
-    
-    ### 💚 Health Status:
-    - **Status**: Overall system health (healthy/unhealthy)
-    - **Message**: Human-readable status message
-    - **Version**: Current system version
-    - **Timestamp**: Health check timestamp
-    
-    ### 🔍 Health Checks:
-    - **Database Connectivity**: SQL Server connection status
-    - **ChromaDB Status**: Vector database health
-    - **AI Services**: Google AI API connectivity
-    - **System Resources**: Memory, CPU, disk usage
-    
-    ### 📊 Use Cases:
-    - Load balancer health checks
-    - Monitoring system integration
-    - Automated system monitoring
-    - Service discovery and registration
-    
-    ### ⚙️ Response Codes:
-    - **200**: System is healthy
-    - **503**: System is unhealthy (service unavailable)
     """,
     responses={
         200: {

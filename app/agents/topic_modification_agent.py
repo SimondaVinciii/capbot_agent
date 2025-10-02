@@ -197,6 +197,7 @@ Các đề tài tương tự:
 3. Tạo sự khác biệt rõ ràng với các đề tài tương tự
 4. Giữ nguyên các thông tin cơ bản (supervisor_id, semester_id, category_id, max_students)
 5. Bổ sung tiêu đề tiếng Anh (eN_Title) và tên viết tắt (abbreviation) dựa trên eN_Title
+6. Tất cả nội dung các field phải bằng tiếng Anh (ngoại lệ duy nhất: vN_title, nếu có, bằng tiếng Việt)
 
 ## HƯỚNG DẪN CHỈNH SỬA:
         - Điều chỉnh title để rõ ràng và khác biệt
@@ -211,28 +212,28 @@ Trả về kết quả trong format JSON. BẮT BUỘC chỉ sử dụng các tr
 {{
   "eN_Title": "English title of the topic",
   "abbreviation": "ACRONYM from eN_Title (3-10 uppercase letters)",
-  "title": "Tiêu đề EN đã chỉnh sửa",
-  "description": "Mô tả đã chỉnh sửa", 
-  "objectives": "Mục tiêu đã chỉnh sửa",
-  "problem": "Vấn đề cần giải quyết (BẮT BUỘC có nội dung)",
-  "context": "Bối cảnh nghiên cứu (BẮT BUỘC có nội dung)",
-  "content": "Nội dung chính của nghiên cứu (BẮT BUỘC có nội dung)",
+  "title": "Edited English title",
+  "description": "Edited description", 
+  "objectives": "Edited objectives",
+  "problem": "Problem statement (REQUIRED with specific content)",
+  "context": "Research context (REQUIRED with specific content)",
+  "content": "Main research content (REQUIRED with specific content)",
   "supervisor_id": {original_topic.get('supervisor_id') or original_topic.get('supervisorId') or 1},
   "semester_id": {original_topic.get('semester_id') or original_topic.get('semesterId') or 1},
   "category_id": {original_topic.get('category_id') or original_topic.get('categoryId') or 0},
   "max_students": {original_topic.get('max_students', 1)},
   "modifications_made": [
-    "Danh sách các thay đổi đã thực hiện"
+    "List of applied changes"
   ],
-  "rationale": "Giải thích chi tiết về lý do và cách thức chỉnh sửa"
+  "rationale": "Detailed explanation of the modifications and reasoning"
 }}
 
 QUAN TRỌNG: 
 - KHÔNG được thêm methodology, expected_outcomes, requirements
 - BẮT BUỘC phải có problem, context, content với nội dung cụ thể
 - Các *id phải là số nguyên
-- Trả lời hoàn toàn bằng tiếng Việt
- - eN_Title phải là tiếng Anh; abbreviation là viết tắt từ eN_Title viết HOA không khoảng trắng
+- Toàn bộ nội dung các field phải bằng tiếng Anh (ngoại lệ duy nhất: vN_title, nếu có, bằng tiếng Việt)
+- eN_Title phải là tiếng Anh; abbreviation là viết tắt từ eN_Title viết HOA không khoảng trắng
 """
         return prompt
     

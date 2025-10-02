@@ -33,7 +33,7 @@ class TopicSuggestionV2Agent(BaseAgent):
             category_preference = input_data.get("category_preference", "")
             keywords = input_data.get("keywords", [])
             supervisor_expertise = input_data.get("supervisor_expertise", [])
-            student_level = input_data.get("student_level", "undergraduate")
+            student_level = input_data.get("student_level", "graduate")
             team_size = input_data.get("team_size", 4)
             if team_size not in (4, 5):
                 team_size = 4
@@ -259,6 +259,7 @@ Bạn là một chuyên gia tư vấn đề tài nghiên cứu. Hãy đề xuấ
 4. Tận dụng xu hướng nghiên cứu của học kỳ hiện tại
 5. Công nghệ, phạm vi và độ khó phù hợp với đồ án tốt nghiệp CNTT
 6. Phân công vai trò rõ ràng cho {team_size} thành viên và kế hoạch công việc 14 tuần
+7. Tất cả field phải bằng tiếng Anh (ngoại trừ vN_title là tiếng Việt)
 
 ## FORMAT JSON BẮT BUỘC:
 Bạn PHẢI trả về CHÍNH XÁC format JSON này với TẤT CẢ các field, KHÔNG có gì khác:
@@ -269,13 +270,13 @@ Bạn PHẢI trả về CHÍNH XÁC format JSON này với TẤT CẢ các field
       "eN_Title": "English title here",
       "abbreviation": "ABC",
       "vN_title": "Tiêu đề tiếng Việt",
-      "problem": "Mô tả vấn đề cần giải quyết",
-      "context": "Bối cảnh nghiên cứu",
-      "content": "Nội dung chính của nghiên cứu",
-      "description": "Mô tả chi tiết về đề tài",
-      "objectives": "Mục tiêu cụ thể",
-      "category": "Danh mục",
-      "rationale": "Lý do phù hợp với xu hướng",
+      "problem": "Problem to solve",
+      "context": "Research context",
+      "content": "Main research content",
+      "description": "Detailed topic description",
+      "objectives": "Specific objectives",
+      "category": "Category",
+      "rationale": "Rationale aligned with the trend",
       "difficulty_level": "Advanced",
       "estimated_duration": "14 weeks",
       "team_size": {team_size},
@@ -323,7 +324,7 @@ Bạn PHẢI trả về CHÍNH XÁC format JSON này với TẤT CẢ các field
 5. KHÔNG có dấu phẩy thừa ở cuối object/array
 6. KHÔNG sử dụng dấu ngoặc kép TRONG nội dung string (thay bằng dấu nháy đơn)
 7. KHÔNG sử dụng ký tự đặc biệt gây lỗi JSON parsing
-8. eN_Title: tiếng Anh, vN_title: tiếng Việt
+8. eN_Title: tiếng Anh, vN_title: tiếng Việt; các field còn lại phải bằng tiếng Anh
 9. abbreviation: 3-5 ký tự, viết hoa
 10. Tất cả text phải là ký tự in được (printable characters)
 11. KHÔNG có control characters hoặc ký tự đặc biệt
@@ -336,14 +337,14 @@ Bạn PHẢI trả về CHÍNH XÁC format JSON này với TẤT CẢ các field
      {{{{
        "eN_Title": "AI Learning System",
        "abbreviation": "ALS",
-       "vN_title": "Hệ thống học tập AI",
-       "problem": "Vấn đề học tập cá nhân hóa",
-       "context": "Bối cảnh giáo dục hiện đại",
-       "content": "Nghiên cứu AI trong giáo dục",
-       "description": "Hệ thống học tập thông minh",
-       "objectives": "Cải thiện hiệu quả học tập",
-       "category": "AI",
-       "rationale": "Xu hướng AI trong giáo dục",
+      "vN_title": "Hệ thống học tập AI",
+      "problem": "Personalized learning challenges",
+      "context": "Modern education context",
+      "content": "AI research in education",
+      "description": "Intelligent learning system",
+      "objectives": "Improve learning outcomes",
+      "category": "AI",
+      "rationale": "AI trend in education",
        "difficulty_level": "Advanced",
        "estimated_duration": "14 weeks",
        "team_size": 4,

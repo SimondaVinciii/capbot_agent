@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  capbot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: capbot-api
+    ports:
+      - "8000:8000"
+    environment:
+      # Google AI Configuration
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      
+      # Database Configuration
+      - DATABASE_URL=${DATABASE_URL}
+      
+      # ChromaDB Configuration
+      - CHROMA_DB_PATH=/app/chroma_db
+      - CHROMA_COLLECTION_NAME=${CHROMA_COLLECTION_NAME:-topics_collection}
+      
+      # API Configuration
+      - SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD:-0.8}
+      - TRENDING_API_URL=${TRENDING_API_URL}
+      - TRENDING_API_KEY=${TRENDING_API_KEY}
+      
+      # Application Configuration
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+      - DEBUG=${DEBUG:-False}
+      
+      # Embedding Configuration
+      - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-sentence}
+      - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME:-all-mpnet-base-v2}
+    volumes:
+      # Persist ChromaDB data
+      - chroma_data:/app/chroma_db
+      # Mount config file if needed
+      - ./config.env:/app/config.env:ro
+    networks:
+      - capbot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 8000)); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - sqlserver
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.capbot.rule=Host(`capbot.local`)"
+      - "traefik.http.services.capbot.loadbalancer.server.port=8000"
+
+  # Optional: SQL Server for development/testing
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: capbot-sqlserver
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Passw0rd
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - capbot-network
+    restart: unless-stopped
+    profiles:
+      - database  # Only start when explicitly requested
+
+  # Optional: Redis for caching (if needed in future)
+  redis:
+    image: redis:7-alpine
+    container_name: capbot-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - capbot-network
+    restart: unless-stopped
+    profiles:
+      - cache  # Only start when explicitly requested
+
+  # Optional: Traefik reverse proxy
+  traefik:
+    image: traefik:v2.10
+    container_name: capbot-traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - capbot-network
+    restart: unless-stopped
+    profiles:
+      - proxy  # Only start when explicitly requested
+
+volumes:
+  chroma_data:
+    driver: local
+  sqlserver_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  capbot-network:
+    driver: bridge

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Create router with detailed metadata
 router = APIRouter(
     prefix="/api/v1/topics",
-    tags=["🔄 Topic Management"],
+    tags=[" Topic Management"],
     responses={
         404: {"description": "Topic not found", "model": ErrorResponse},
         400: {"description": "Bad request", "model": ErrorResponse},
@@ -56,13 +56,10 @@ class DuplicateAdvancedRequest(BaseModel):
 
 @router.post(
     "/check-duplicate-advanced",
-    summary="🧠 Check duplicate and auto-suggest modifications",
+    summary=" Check duplicate and auto-suggest modifications",
     description="""
     ## Advanced duplicate check with auto-modification
     - Input fields follow new vector logic: en_title, vn_title, problem, context, content, description, objectives
-    - Uses DuplicateDetectionAgent to detect duplicates from ChromaDB
-    - If duplicate or potential duplicate, invokes TopicModificationAgent to suggest improvements
-    - Returns duplicate analysis and optional modification proposal
     """,
 )
 async def check_duplicate_advanced(
@@ -74,7 +71,7 @@ async def check_duplicate_advanced(
     try:
         import time
         t0 = time.time()
-        # Normalize request to new schema regardless of legacy/new input
+       
         if isinstance(req, DuplicateAdvancedRequest):
             en_title = (req.eN_Title or req.title or "")
             vn_title = req.vN_title or ""
@@ -86,7 +83,7 @@ async def check_duplicate_advanced(
             body_semester_id = req.semesterId
             category_id = req.categoryId
         else:
-            # Legacy TopicRequest mapping
+            
             en_title = req.title or ""
             vn_title = ""
             problem = ""
@@ -221,7 +218,7 @@ async def check_duplicate_advanced(
 @router.post(
     "/check-rubric",
     response_model=RubricEvaluationResponse,
-    summary="📝 Đánh giá đề tài theo rubric 10 tiêu chí",
+    summary=" Đánh giá đề tài theo rubric 10 tiêu chí",
     description="Đánh giá đề tài theo các tiêu chí: tiêu đề, ngữ cảnh, vấn đề, người dùng, luồng/chức năng, khách hàng/tài trợ, hướng tiếp cận & công nghệ & deliverables, phạm vi & packages & khả thi 14 tuần, độ phức tạp kỹ thuật, tính ứng dụng & khả thi công nghệ.",
 )
 async def check_rubric(req: RubricEvaluationRequest) -> RubricEvaluationResponse:
@@ -330,34 +327,11 @@ async def check_rubric_file(
 @router.post(
     "/submit-with-ai",
     response_model=AgentProcessResponse,
-    summary="🤖 Submit Topic with Full AI Support",
+    summary=" Submit Topic with Full AI Support",
     description="""
     ## Submit topic with comprehensive AI agent support
     
-    ### �� AI Features:
-    - **Duplicate Detection**: Uses ChromaDB to check for similar topics
-    - **Auto-Modification**: Automatically modifies topic if duplicates found
-    - **Trending Suggestions**: Gets AI-powered topic suggestions
-    - **Full Processing**: Complete workflow with all AI agents
-    
-    ### 📊 Processing Workflow:
-    1. **Suggestion Generation** (if enabled): Get trending topic suggestions
-    2. **Duplicate Detection** (if enabled): Check for similar existing topics
-    3. **Auto-Modification** (if duplicates found): Modify topic to reduce similarity
-    4. **Topic Creation**: Create topic in database
-    5. **Indexing**: Index new topic for future duplicate detection
-    
-    ### ⚙️ Parameters:
-    - `check_duplicates`: Enable ChromaDB duplicate detection
-    - `get_suggestions`: Get trending topic suggestions
-    - `auto_modify`: Auto-modify topic if duplicates found
-    
-    ### 📋 Response includes:
-    - Complete processing results
-    - Duplicate analysis and similarity scores
-    - Modification suggestions (if applicable)
-    - Final topic data and database ID
-    - Processing statistics and timing
+   
     """,
     responses={
         200: {
@@ -472,28 +446,11 @@ async def check_topic_duplicates(topic_request: TopicRequest) -> DuplicateCheckR
 @router.get(
     "/suggestions",
     response_model=TopicSuggestionsResponse,
-    summary="💡 Get Trending Topic Suggestions",
+    summary="Get Trending Topic Suggestions",
     description="""
     ## Get AI-powered topic suggestions based on current research trends
     
-    ### 🤖 AI Features:
-    - Analyzes current research trends using external APIs
-    - Generates topic suggestions using Google AI (Gemini)
-    - Customizes suggestions based on supervisor expertise
-    - Considers student level and category preferences
     
-    ### 📊 Input Parameters:
-    - `semester_id`: Target semester for suggestions
-    - `category_preference`: Preferred topic category
-    - `keywords`: Keywords of interest for customization
-    - `supervisor_expertise`: Supervisor's expertise areas
-    - `student_level`: Student level (undergraduate/graduate)
-    
-    ### 📋 Response includes:
-    - List of suggested topics with detailed descriptions
-    - Rationale for each suggestion
-    - Trending analysis and research insights
-    - Customization based on input parameters
     """,
     responses={
         200: {
@@ -569,30 +526,11 @@ async def get_trending_suggestions(
 @router.get(
     "/suggestions-v2",
     response_model=TopicSuggestionsV2Response,
-    summary="💡 Get Trending Topic Suggestions V2",
+    summary="Get Trending Topic Suggestions V2",
     description="""
     ## Get AI-powered topic suggestions v2 with additional fields
     
-    ### 🤖 AI Features:
-    - Analyzes current research trends using semester data
-    - Generates topic suggestions with English/Vietnamese titles
-    - Includes abbreviation generation for each topic
-    - Customizes suggestions based on supervisor expertise
-    - Considers student level and category preferences
     
-    ### 📊 Input Parameters:
-    - `semester_id`: Target semester for suggestions
-    - `category_preference`: Preferred topic category
-    - `keywords`: Keywords of interest for customization
-    - `supervisor_expertise`: Supervisor's expertise areas
-    - `student_level`: Student level (undergraduate/graduate)
-    - `team_size`: Team size (4 or 5 students)
-    
-    ### 📋 Response includes:
-    - Topic suggestions with eN_Title, abbreviation, vN_title
-    - Problem, context, content, description, objectives
-    - Trending areas analysis
-    - Processing time and metadata
     """,
     responses={
         200: {
